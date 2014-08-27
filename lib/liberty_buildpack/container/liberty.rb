@@ -48,6 +48,7 @@ module LibertyBuildpack::Container
     # @option context [String] :java_home the directory that acts as +JAVA_HOME+
     # @option context [Array<String>] :java_opts an array that Java options can be added to
     # @option context [String] :lib_directory the directory that additional libraries are placed in
+    # @option context [String] :logs_directory the directory that log files should be routed to
     # @option context [Hash] :vcap_application the information about the deployed application provided by the Cloud Controller
     # @option context [Hash] :vcap_services the bound services to the application provided by the Cloud Controller
     # @option context [Hash] :license_ids the licenses accepted by the user
@@ -58,6 +59,7 @@ module LibertyBuildpack::Container
       @java_home = context[:java_home]
       @java_opts = context[:java_opts]
       @lib_directory = context[:lib_directory]
+      @logs_directory = context[:logs_directory]
       @configuration = context[:configuration]
       @vcap_services = Heroku.heroku? ? Heroku.new.generate_vcap_services(ENV) : context[:vcap_services]
       @vcap_application = context[:vcap_application]
@@ -330,7 +332,7 @@ module LibertyBuildpack::Container
 
     def update_logs_dir(server_xml_doc)
       include_file = REXML::Element.new('logging', server_xml_doc.root)
-      include_file.add_attribute('logDirectory', log_directory)
+      include_file.add_attribute('logDirectory', @logs_directory)
     end
 
     def disable_config_monitoring(server_xml_doc)
@@ -717,14 +719,6 @@ module LibertyBuildpack::Container
       File.join(liberty_home, 'etc', 'extensions', 'icap.properties')
     end
 
-    def log_directory
-      if Heroku.heroku?
-        return '../../../../logs'
-      else
-        return '../../../../../logs'
-      end
-    end
-
     def self.web_inf_lib(app_dir)
       File.join app_dir, 'WEB-INF', 'lib'
     end
@@ -735,7 +729,18 @@ module LibertyBuildpack::Container
 
     def self.web_inf(app_dir)
       web_inf = File.join(app_dir, WEB_INF)
-      File.directory?(File.join(app_dir, WEB_INF)) ? web_inf : nil
+      File.directory?(File.join(app_dir, WEB_INF)) && !main_class?(app_dir) ? web_inf : nil
+    end
+
+    def self.main_class?(app_dir)
+      manifest_file = File.join(app_dir, 'META-INF/MANIFEST.MF')
+      if File.exist?(manifest_file)
+        props = LibertyBuildpack::Util::Properties.new(manifest_file)
+        main_class = props['Main-Class']
+        main_class != nil
+      else
+        false
+      end
     end
 
     def self.meta_inf(app_dir)
