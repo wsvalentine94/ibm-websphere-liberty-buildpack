@@ -21,7 +21,7 @@ the `manifest.yml` file refer to the [manifest documentation][].
 After you have set the license acceptance environment variables, use the following command to deploy the application with the IBM WebSphere Application Server Liberty Buildpack:
 
 ```bash
-cf push <APP-NAME> -p <ARCHIVE> -b https://github.com/cloudfoundry/ibm-websphere-liberty-buildpack.git
+cf push <APP-NAME> -p <ARCHIVE> -b https://github.com/cloudfoundry/ibm-websphere-liberty-buildpack.git#beta
 ```
 
 * For further details on the options available for deploying your applications see [options][].
