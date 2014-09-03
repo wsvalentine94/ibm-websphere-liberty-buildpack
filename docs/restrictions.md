@@ -40,4 +40,4 @@ environment, the use of the `<collectiveMember-1.0>` feature is not supported
 in that environment either.
 
 
-[Liberty features]: http://pic.dhe.ibm.com/infocenter/wasinfo/v8r5/index.jsp?topic=%2Fcom.ibm.websphere.wlp.nd.doc%2Fae%2Frwlp_feat.html
+[Liberty features]: http://www-01.ibm.com/support/knowledgecenter/was_beta_liberty/com.ibm.websphere.wlp.nd.multiplatform.doc/ae/rwlp_feat.html
