@@ -1,6 +1,6 @@
 # Encoding: utf-8
 # IBM WebSphere Application Server Liberty Buildpack
-# Copyright 2013 the original author or authors.
+# Copyright 2013-2014 the original author or authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,6 +34,9 @@ module LibertyBuildpack::Jre
 
     # The ratio of heap reservation to total reserved memory
     HEAP_SIZE_RATIO = 0.75
+
+    # Filename of killjava script used to kill the JVM on OOM.
+    KILLJAVA_FILE_NAME = 'killjava.sh'
 
     # Creates an instance, passing in an arbitrary collection of options.
     #
@@ -79,12 +82,17 @@ module LibertyBuildpack::Jre
       check_memory
 
       download_start_time = Time.now
-      print "-----> Downloading IBM #{@version} JRE from #{@uri} "
-
+      if @uri.include? '://'
+        print "-----> Downloading IBM #{@version} JRE from #{@uri} ... "
+      else
+        filename = File.basename(@uri)
+        print "-----> Retrieving IBM #{@version} JRE (#{filename}) ... "
+      end
       LibertyBuildpack::Util::ApplicationCache.new.get(@uri) do |file|  # TODO: Use global cache
         puts "(#{(Time.now - download_start_time).duration})"
         expand file
       end
+      copy_killjava_script
     end
 
     # Build Java memory options and places then in +context[:java_opts]+
@@ -92,6 +100,8 @@ module LibertyBuildpack::Jre
     # @return [void]
     def release
       @java_opts.concat memory(@configuration)
+      @java_opts.concat default_dump_opts
+      @java_opts << "-Xdump:tool:events=systhrow,filter=java/lang/OutOfMemoryError,request=serial+exclusive,exec=#{@common_paths.diagnostics_directory}/#{KILLJAVA_FILE_NAME}"
     end
 
     # Prints a warning message if a memory limit of less than 512M has been chosen when using the IBM JDK.
@@ -99,16 +109,16 @@ module LibertyBuildpack::Jre
       mem_limit = MemoryLimit.memory_limit
       unless mem_limit.nil?
         if mem_limit < MemorySize.new('512M')
-          puts '       Avoid Trouble: Specify a minimum of 512M as the Memory Limit for your apps when using IBM JDK.'
+          puts '-----> Avoid Trouble: Specify a minimum of 512M as the Memory Limit for your apps when using IBM JDK.'
         end
       end
     end
 
     private
 
-    JAVA_HOME = '.java'.freeze
+    RESOURCES = '../../../resources/ibmjdk/diagnostics'.freeze
 
-    DUMP_HOME = '../../../../../dumps'.freeze
+    JAVA_HOME = '.java'.freeze
 
     KEY_MEMORY_HEURISTICS = 'memory_heuristics'
 
@@ -116,10 +126,10 @@ module LibertyBuildpack::Jre
 
     def expand(file)
       expand_start_time = Time.now
-      print "       Expanding JRE to #{JAVA_HOME} "
+      print "         Expanding JRE to #{JAVA_HOME} ... "
 
-      system "rm -rf #{java_home}"
-      system "mkdir -p #{java_home}"
+      FileUtils.rm_rf(java_home)
+      FileUtils.mkdir_p(java_home)
 
       if File.basename(file.path).end_with?('.bin.cached', '.bin')
         Dir.mktmpdir do |temp|
@@ -132,7 +142,7 @@ module LibertyBuildpack::Jre
           copy = File.join(temp, File.basename(file.path))
           FileUtils.cp(file.path, copy)
 
-          system "chmod +x #{copy}"
+          File.chmod(0755, copy)
           system "#{copy} -i silent -f #{response_file.path} 2>&1"
 
           ## Move expanded JRE to JAVA_HOME as JRE installer ignoring USER_INSTALL_DIR
@@ -189,17 +199,30 @@ module LibertyBuildpack::Jre
       end
     end
 
-    # enable verbose gc logging to stderr and the dumps directory with historical
-    # number of logs of 10 with 1000 gc cycles
-    def default_opts_gc
+    # default options for -Xdump to disable dumps while routing to the default dumps location when it is enabled by the
+    # user
+    def default_dump_opts
       default_options = []
-      default_options.push('-verbose:gc')
-      default_options.push("-Xverbosegclog:#{@common_paths.log_directory}/verbosegc#.log,10,1000")
+      default_options.push '-Xdump:none'
+      default_options.push "-Xdump:heap:defaults:file=#{@common_paths.dump_directory}/heapdump.%Y%m%d.%H%M%S.%pid.%seq.phd"
+      default_options.push "-Xdump:java:defaults:file=#{@common_paths.dump_directory}/javacore.%Y%m%d.%H%M%S.%pid.%seq.txt"
+      default_options.push "-Xdump:snap:defaults:file=#{@common_paths.dump_directory}/Snap.%Y%m%d.%H%M%S.%pid.%seq.trc"
       default_options
     end
 
     def pre_8
       @version < LibertyBuildpack::Util::TokenizedVersion.new('1.8.0')
+    end
+
+    def copy_killjava_script
+      resources = File.expand_path(RESOURCES, File.dirname(__FILE__))
+      killjava_file_content = File.read(File.join resources, KILLJAVA_FILE_NAME)
+      updated_content = killjava_file_content.gsub(/@@LOG_FILE_NAME@@/, LibertyBuildpack::Diagnostics::LOG_FILE_NAME)
+      diagnostic_dir = LibertyBuildpack::Diagnostics.get_diagnostic_directory @app_dir
+      FileUtils.mkdir_p diagnostic_dir
+      File.open(File.join(diagnostic_dir, KILLJAVA_FILE_NAME), 'w', 0755) do |file|
+        file.write updated_content
+      end
     end
 
   end

@@ -1,6 +1,6 @@
 # Encoding: utf-8
 # IBM WebSphere Application Server Liberty Buildpack
-# Copyright 2013 the original author or authors.
+# Copyright 2014 the original author or authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ require 'liberty_buildpack/container/install_components'
 require 'liberty_buildpack/util/constantize'
 require 'liberty_buildpack/util/application_cache'
 require 'liberty_buildpack/util/format_duration'
+require 'liberty_buildpack/util/xml_utils'
 require 'liberty_buildpack/diagnostics/logger_factory'
 
 module LibertyBuildpack::Container
@@ -179,8 +180,7 @@ module LibertyBuildpack::Container
       original_s = ''
       modified_s = ''
       begin
-        formatter = REXML::Formatters::Pretty.new(4)
-        formatter.compact = true
+        formatter = LibertyBuildpack::Util::XmlUtils.xml_formatter
         formatter.write(REXML::Document.new(original), original_s)
         formatter.write(REXML::Document.new(modified), modified_s)
         original_s = original_s.split(/\n/)
@@ -221,10 +221,10 @@ module LibertyBuildpack::Container
       spec = parts[-1]
       if spec.casecmp('all') == 0
         hash[service] = 'all'
-        @logger.info("opting out of all auto-configuration for service #{service}")
+        puts "-----> Opting out of all auto-configuration for service #{service}"
       elsif spec.casecmp('config') == 0
         hash[service] = 'config'
-        @logger.info("opting out of auto-configuration configuration updates for service #{service}")
+        puts "-----> Opting out of auto-configuration configuration updates for service #{service}"
       else
         @logger.warn("#{string} is not a legal opt-out specification for service #{service}. The opt-out request will be ignored and the service will be configured normally.")
       end
@@ -263,9 +263,7 @@ module LibertyBuildpack::Container
         end
       end
       runtime_vars = File.join(server_dir, 'runtime-vars.xml')
-      formatter = REXML::Formatters::Pretty.new(2)
-      formatter.compact = true
-      File.open(runtime_vars, 'w:utf-8') { |file| formatter.write(runtime_vars_doc, file) }
+      LibertyBuildpack::Util::XmlUtils.write_formatted_xml_file(runtime_vars_doc, runtime_vars)
       @logger.debug("runtime-vars file is #{runtime_vars}")
       @logger.debug("runtime vars contents is #{File.readlines(runtime_vars)}")
     end
@@ -439,7 +437,12 @@ module LibertyBuildpack::Container
     #----------------------------------------------------
     def install_jar(root, lib_dir, uri)
       download_start_time = Time.now
-      print "-----> Installing client jar(s) from #{uri} "
+      if uri.include? '://'
+        print "-----> Downloading and installing client jar(s) from #{uri} "
+      else
+        filename = File.basename(uri)
+        print "-----> Retrieving and installing client jar(s) from #{filename} "
+      end
       LibertyBuildpack::Util::ApplicationCache.new.get(uri) do |file|
         if file.path.end_with?('zip.cached')
           system "unzip -oq -d #{root} #{file.path} 2>&1"

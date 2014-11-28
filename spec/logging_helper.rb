@@ -1,7 +1,7 @@
 # Encoding: utf-8
 # Cloud Foundry Java Buildpack
 # IBM WebSphere Application Server Liberty Buildpack
-# Copyright 2013 the original author or authors.
+# Copyright 2014 the original author or authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ shared_context 'logging_helper' do
 
   let(:log_contents) { Pathname.new(LibertyBuildpack::Diagnostics.get_buildpack_log app_dir).read }
 
-  before do
+  before do |example|
     log_level = example.metadata[:log_level]
     ENV['JBP_LOG_LEVEL'] = log_level if log_level
 

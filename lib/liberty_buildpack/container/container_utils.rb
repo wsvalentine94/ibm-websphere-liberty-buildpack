@@ -1,6 +1,6 @@
 # Encoding: utf-8
 # IBM WebSphere Application Server Liberty Buildpack
-# Copyright 2013 the original author or authors.
+# Copyright 2013-2014 the original author or authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -75,6 +75,20 @@ module LibertyBuildpack::Container
       end
     end
 
+    # Zips up a specified directory. It uses the +zip+ or +jar+ command depending of the runtime environment.
+    #
+    # @param [String] dir - the directory to zip up.
+    # @param [String] file - the zip file to create.
+    # @return [void]
+    def self.zip(dir, file)
+      file = File.expand_path(file)
+      Dir.chdir (dir) do
+        if File.exists? '/usr/bin/zip'
+          system "zip -rq #{file} *"
+        else
+          system "jar cf #{file} *"
+        end
+      end
+    end
   end
-
 end

@@ -1,6 +1,6 @@
 # Encoding: utf-8
 # IBM WebSphere Application Server Liberty Buildpack
-# Copyright 2013 the original author or authors.
+# Copyright 2013-2014 the original author or authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 require 'spec_helper'
 require 'fileutils'
 require 'liberty_buildpack/jre/openjdk'
+require 'liberty_buildpack/container/common_paths'
 
 module LibertyBuildpack::Jre
 
@@ -29,6 +30,7 @@ module LibertyBuildpack::Jre
     let(:memory_heuristic) { double('MemoryHeuristic', resolve: %w(opt-1 opt-2)) }
 
     before do
+      allow(LibertyBuildpack::Jre::WeightBalancingMemoryHeuristic).to receive(:new).and_return(memory_heuristic)
       $stdout = StringIO.new
       $stderr = StringIO.new
     end
@@ -55,7 +57,7 @@ module LibertyBuildpack::Jre
       end
     end
 
-    it 'should extract Java from a tar gz' do
+    it 'should extract Java from a GZipped TAR' do
       Dir.mktmpdir do |root|
         LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item).and_return(OPENJDK_DETAILS_PRE_8)
         LibertyBuildpack::Util::ApplicationCache.stub(:new).and_return(application_cache)
@@ -70,7 +72,7 @@ module LibertyBuildpack::Jre
         ).compile
 
         java = File.join(root, '.java', 'jre', 'bin', 'java')
-        expect(File.exists?(java)).to be_true
+        expect(File.exists?(java)).to eq(true)
       end
     end
 
@@ -88,6 +90,24 @@ module LibertyBuildpack::Jre
         )
 
         expect(java_home).to eq('.java')
+      end
+    end
+
+    it 'should add memory options to java_opts' do
+      Dir.mktmpdir do |root|
+        LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item).and_return(OPENJDK_DETAILS_PRE_8)
+
+        java_opts = %w(test-opt-2 test-opt-1)
+        OpenJdk.new(
+            app_dir: root,
+            java_home: '',
+            java_opts: java_opts,
+            configuration: {},
+            license_ids: {}
+        ).release
+
+        expect(java_opts).to include('opt-1')
+        expect(java_opts).to include('opt-2')
       end
     end
 
@@ -115,6 +135,7 @@ module LibertyBuildpack::Jre
             app_dir: root,
             java_home: '',
             java_opts: java_opts,
+            common_paths: LibertyBuildpack::Container::CommonPaths.new,
             configuration: {},
             license_ids: {}
         ).release
@@ -137,11 +158,9 @@ module LibertyBuildpack::Jre
             license_ids: {}
         ).compile
 
-        killjava_content = File.read(File.join(LibertyBuildpack::Diagnostics.get_diagnostic_directory(root), OpenJdk::KILLJAVA_FILE_NAME))
-        expect(killjava_content).to include("#{LibertyBuildpack::Diagnostics::LOG_FILE_NAME}")
+        expect(Pathname.new(File.join(LibertyBuildpack::Diagnostics.get_diagnostic_directory(root), OpenJdk::KILLJAVA_FILE_NAME))).to exist
       end
     end
-
   end
 
 end

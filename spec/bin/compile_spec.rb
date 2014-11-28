@@ -1,6 +1,6 @@
 # Encoding: utf-8
 # IBM WebSphere Application Server Liberty Buildpack
-# Copyright 2013 the original author or authors.
+# Copyright 2013-2014 the original author or authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,7 +26,11 @@ describe 'compile script', :integration do
   end
 
   before(:each) do
-    ENV.update({ 'IBM_JVM_LICENSE' => 'L-EWOD-99YA4J', 'IBM_LIBERTY_LICENSE' => 'L-SWIS-9GXN5D' })
+    ENV.update({ 'IBM_JVM_LICENSE' => 'L-EWOD-99YA4J', 'IBM_LIBERTY_LICENSE' => 'L-SWIS-9GXN5D', 'USER_AGENT' => 'RSpec-Test' })
+  end
+
+  after(:each) do
+    ENV.delete('USER_AGENT')
   end
 
   after(:all) do

@@ -1,6 +1,6 @@
 # Encoding: utf-8
 # IBM WebSphere Application Server Liberty Buildpack
-# Copyright 2013 the original author or authors.
+# Copyright 2014 the original author or authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -15,85 +15,49 @@
 # the License.
 
 require 'spec_helper'
+require 'component_helper'
 require 'liberty_buildpack/container/java_main'
 require 'liberty_buildpack/container/container_utils'
 
 module LibertyBuildpack::Container
 
   describe JavaMain do
+    include_context 'component_helper'
 
-    before do
+    before do |example|
       $stdout = StringIO.new
       $stderr = StringIO.new
-    end
 
-    describe 'detect' do
-      it 'should detect main class in manifest' do
-        Dir.mktmpdir do |root|
-          FileUtils.mkdir_p File.join(root, 'META-INF')
-          File.open(File.join(root, 'META-INF', 'MANIFEST.MF'), 'w') do |file|
-            file.write('Main-Class: detect.test')
-          end
-
-          detected = JavaMain.new(
-            app_dir: root,
-            configuration: {}
-          ).detect
-
-          expect(detected).to eq('Liberty-JAR:java-main')
+      # JavaMain tests can specify what needs to be written to the META-INF/MANIFEST.MF
+      java_main_manifest = example.metadata[:java_main_manifest]
+      if java_main_manifest
+        FileUtils.mkdir_p File.join(app_dir, 'META-INF')
+        File.open(File.join(app_dir, 'META-INF', 'MANIFEST.MF'), 'w') do |file|
+          file.write(java_main_manifest)
         end
       end
+    end
 
-      it 'should detect main class in configuration' do
-        Dir.mktmpdir do |root|
-          detected = JavaMain.new(
-            app_dir: root,
-            configuration: { 'java_main_class' => 'java-main' }
-          ).detect
+    describe 'detect', configuration: {} do
 
-          expect(detected).to eq('Liberty-JAR:java-main')
-        end
+      subject(:detected) do |example|
+        JavaMain.new(context).detect
+      end
+
+      it 'should detect main class in manifest',
+         java_main_manifest: 'Main-Class: detect.test' do
+
+        expect(detected).to eq(%w(JAR java-main))
+      end
+
+      it 'should detect main class in configuration',
+         configuration: { 'java_main_class' => 'java-main' } do
+
+        expect(detected).to eq(%w(JAR java-main))
       end
 
       it 'should not detect without manifest' do
-        Dir.mktmpdir do |root|
-
-          detected = JavaMain.new(
-           app_dir: root,
-           configuration: {}
-          ).detect
-
-          expect(detected).to be_nil
-        end
-      end
-
-      it 'should update the common_paths provided by the buildpack to include the Standalone Java container path' do
-        Dir.mktmpdir do |root|
-
-          java_main = JavaMain.new(
-           app_dir: root,
-           common_paths: CommonPaths.new,
-           configuration: { 'java_main_class' => 'java-main' }
-          )
-          java_main.detect
-
-          actual_common_paths = java_main.instance_variable_get(:@common_paths)
-          expect(actual_common_paths.instance_variable_get(:@relative_location)).to eq('../')
-        end
-      end
-
-      it 'should result with Java Standalone path when the common_paths is not provided in its context' do
-        Dir.mktmpdir do |root|
-
-          java_main = JavaMain.new(
-           app_dir: root,
-           configuration: { 'java_main_class' => 'java-main' }
-          )
-          java_main.detect
-
-          actual_common_paths = java_main.instance_variable_get(:@common_paths)
-          expect(actual_common_paths.instance_variable_get(:@relative_location)).to eq('../')
-        end
+        expect(detected).to be_nil
       end
     end
 
@@ -110,160 +74,117 @@ module LibertyBuildpack::Container
           end
 
           JavaMain.new(
-          app_dir: root,
-          java_home: '.java',
-          java_opts: [],
-          configuration: { 'java_main_class' => 'com.ibm.rspec.test' }
+            app_dir: root,
+            java_home: '.java',
+            java_opts: [],
+            configuration: { 'java_main_class' => 'com.ibm.rspec.test' }
           ).compile
 
-          expect(File.exists?(File.join root, '.java', 'overlay.txt')).to be_true
-          expect(File.exists?(File.join root, '.java', 'test.txt')).to be_true
+          expect(File.exists?(File.join root, '.java', 'overlay.txt')).to eq(true)
+          expect(File.exists?(File.join root, '.java', 'test.txt')).to eq(true)
         end
       end
     end
 
-    describe 'release' do
-      it 'should return the java command' do
-        Dir.mktmpdir do |root|
-          released = JavaMain.new(
-          app_dir: root,
-          java_home: '.java',
-          java_opts: [],
-          configuration: { 'java_main_class' => 'com.ibm.rspec.test' }
-          ).release
+    describe 'release',
+             java_home: '.java',
+             java_opts: [],
+             configuration: {} do
+
+      subject(:released) { JavaMain.new(context).release }
+
+      it 'should include command line argument JVM_ARGS',
+         configuration: { 'java_main_class' => 'com.ibm.rspec.test' } do
+
+        expect(released).to include('java $JVM_ARGS com.ibm.rspec.test')
+      end
+
+      it 'should include command line argument JVM_ARGS after JAVA_OPTS values',
+         java_opts: %w(user_java_opts1 user_java_opts2),
+         configuration: { 'java_main_class' => 'com.ibm.rspec.test' } do
+
+        expect(released).to include('java user_java_opts1 user_java_opts2 $JVM_ARGS com.ibm.rspec.test')
+      end
+
+      it 'should return command line arguments when they are specified',
+         configuration: {
+            'java_main_class' => 'com.ibm.rspec.test',
+            'arguments' => 'some arguments' } do
+
+        expect(released).to include('com.ibm.rspec.test some arguments')
+      end
+
+      it 'should return classpath entries when Class-Path is specified.',
+         java_main_manifest: 'Class-Path: additional_libs/test-jar-1.jar test-jar-2.jar' do
+
+        expect(released).to include('-cp $PWD/additional_libs/test-jar-1.jar:$PWD/test-jar-2.jar')
+      end
+
+      it 'should return spring boot applications with a JarLauncher in manifest',
+         java_main_manifest: 'Main-Class: org.springframework.boot.loader.JarLauncher' do
+
+        expect(released).to include('org.springframework.boot.loader.JarLauncher --server.port=$PORT')
+      end
+
+      it 'should return spring boot applications with a WarLauncher in manifest',
+         java_main_manifest: 'Main-Class: org.springframework.boot.loader.WarLauncher' do
+
+        expect(released).to include('org.springframework.boot.loader.WarLauncher --server.port=$PORT')
+      end
+
+      it 'should return spring boot applications with a PropertiesLauncher in manifest',
+         java_main_manifest: 'Main-Class: org.springframework.boot.loader.PropertiesLauncher' do
+
+        expect(released).to include('org.springframework.boot.loader.PropertiesLauncher --server.port=$PORT')
+      end
+
+      it 'should return spring boot applications with a JarLauncher in configuration',
+         configuration: { 'java_main_class' => 'org.springframework.boot.loader.JarLauncher' } do
+
+        expect(released).to include('org.springframework.boot.loader.JarLauncher --server.port=$PORT')
+      end
+
+      it 'should return spring boot applications with a WarLauncher in configuration',
+         configuration: { 'java_main_class' => 'org.springframework.boot.loader.WarLauncher' } do
+
+        expect(released).to include('org.springframework.boot.loader.WarLauncher --server.port=$PORT')
+      end
+
+      it 'should return spring boot applications with a PropertiesLauncher in configuration',
+         configuration: { 'java_main_class' => 'org.springframework.boot.loader.PropertiesLauncher' } do
+
+        expect(released).to include('org.springframework.boot.loader.PropertiesLauncher --server.port=$PORT')
+      end
+
+      context 'default path which has jre in it' do
+
+        before do
+          allow(File).to receive(:exists?).with(%r{.java/jre/bin/java}).and_return(true)
+          allow(File).to receive(:exists?).with(%r{.java/bin/java}).and_return(false)
+        end
+
+        it 'should return the java command',
+           configuration: { 'java_main_class' => 'com.ibm.rspec.test' } do
 
           expect(released).to include('$PWD/.java/jre/bin/java')
         end
-      end
 
-      it 'should return classpath entries when Class-Path is specified.' do
-        Dir.mktmpdir do |root|
-          FileUtils.mkdir_p File.join(root, 'META-INF')
-          File.open(File.join(root, 'META-INF', 'MANIFEST.MF'), 'w') do |file|
-            file.write('Class-Path: additional_libs/test-jar-1.jar test-jar-2.jar')
-          end
+      end # end of default jre context
 
-          detected = JavaMain.new(
-            app_dir: root,
-            java_home: '.java',
-            java_opts: [],
-            configuration: {}
-          ).release
+      context 'paths that do not have jre in it' do
 
-          expect(detected).to include('-cp $PWD/additional_libs/test-jar-1.jar:$PWD/test-jar-2.jar')
+        before do
+          allow(File).to receive(:exists?).with(%r{.java/jre/bin/java}).and_return(false)
+          allow(File).to receive(:exists?).with(%r{.java/bin/java}).and_return(true)
+        end
+
+        it 'should return the java command adjusted for a nondefault java bin location',
+           configuration: { 'java_main_class' => 'com.ibm.rspec.test' } do
+
+          expect(released).to include('$PWD/.java/bin/java')
         end
       end
-
-      it 'should return command line arguments when they are specified' do
-        Dir.mktmpdir do |root|
-
-          detected = JavaMain.new(
-            app_dir: root,
-            java_home: '.java',
-            java_opts: [],
-            configuration: { 'java_main_class' => 'com.ibm.rspec.test', 'arguments' => 'some arguments' }
-          ).release
-
-          expect(detected).to include('com.ibm.rspec.test some arguments')
-        end
-      end
-
-      it 'should return spring boot applications with a JarLauncher in manifest' do
-        Dir.mktmpdir do |root|
-          FileUtils.mkdir_p File.join(root, 'META-INF')
-          File.open(File.join(root, 'META-INF', 'MANIFEST.MF'), 'w') do |file|
-            file.write('Main-Class: org.springframework.boot.loader.JarLauncher')
-          end
-
-          detected = JavaMain.new(
-            app_dir: root,
-            java_home: '.java',
-            java_opts: [],
-            configuration: {}
-          ).release
-
-          expect(detected).to include('org.springframework.boot.loader.JarLauncher --server.port=$PORT')
-        end
-      end
-
-      it 'should return spring boot applications with a WarLauncher in manifest' do
-        Dir.mktmpdir do |root|
-          FileUtils.mkdir_p File.join(root, 'META-INF')
-          File.open(File.join(root, 'META-INF', 'MANIFEST.MF'), 'w') do |file|
-            file.write('Main-Class: org.springframework.boot.loader.WarLauncher')
-          end
-
-          detected = JavaMain.new(
-            app_dir: root,
-            java_home: '.java',
-            java_opts: [],
-            configuration: {}
-          ).release
-
-          expect(detected).to include('org.springframework.boot.loader.WarLauncher --server.port=$PORT')
-        end
-      end
-
-      it 'should return spring boot applications with a PropertiesLauncher in manifest' do
-        Dir.mktmpdir do |root|
-          FileUtils.mkdir_p File.join(root, 'META-INF')
-          File.open(File.join(root, 'META-INF', 'MANIFEST.MF'), 'w') do |file|
-            file.write('Main-Class: org.springframework.boot.loader.PropertiesLauncher')
-          end
-
-          detected = JavaMain.new(
-            app_dir: root,
-            java_home: '.java',
-            java_opts: [],
-            configuration: {}
-          ).release
-
-          expect(detected).to include('org.springframework.boot.loader.PropertiesLauncher --server.port=$PORT')
-        end
-      end
-
-      it 'should return spring boot applications with a JarLauncher in configuration' do
-        Dir.mktmpdir do |root|
-
-          detected = JavaMain.new(
-            app_dir: root,
-            java_home: '.java',
-            java_opts: [],
-            configuration: { 'java_main_class' => 'org.springframework.boot.loader.JarLauncher' }
-          ).release
-
-          expect(detected).to include('org.springframework.boot.loader.JarLauncher --server.port=$PORT')
-        end
-      end
-
-      it 'should return spring boot applications with a WarLauncher in configuration' do
-        Dir.mktmpdir do |root|
-
-          detected = JavaMain.new(
-            app_dir: root,
-            java_home: '.java',
-            java_opts: [],
-            configuration: { 'java_main_class' => 'org.springframework.boot.loader.WarLauncher' }
-          ).release
-
-          expect(detected).to include('org.springframework.boot.loader.WarLauncher --server.port=$PORT')
-        end
-      end
-
-      it 'should return spring boot applications with a PropertiesLauncher in configuration' do
-        Dir.mktmpdir do |root|
-
-          detected = JavaMain.new(
-            app_dir: root,
-            java_home: '.java',
-            java_opts: [],
-            configuration: { 'java_main_class' => 'org.springframework.boot.loader.PropertiesLauncher' }
-          ).release
-
-          expect(detected).to include('org.springframework.boot.loader.PropertiesLauncher --server.port=$PORT')
-        end
-      end
-    end
+    end # end of release describe
 
   end
 

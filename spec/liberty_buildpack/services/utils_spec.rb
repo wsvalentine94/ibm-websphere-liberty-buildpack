@@ -1,6 +1,6 @@
 # Encoding: utf-8
 # IBM Liberty Buildpack
-# Copyright 2013 the original author or authors.
+# Copyright 2014 the original author or authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -135,14 +135,14 @@ module LibertyBuildpack::Services
       it 'should handle single element with no config ids' do
         doc = REXML::Document.new('<server></server>')
         e1 = REXML::Element.new('stanza', doc.root)
-        expect(Utils.is_logical_singleton?([e1])).to be_true
+        expect(Utils.is_logical_singleton?([e1])).to eq(true)
       end # it
 
       it 'should handle partitioned element with no config ids' do
         doc = REXML::Document.new('<server></server>')
         e1 = REXML::Element.new('stanza', doc.root)
         e2 = REXML::Element.new('stanza', doc.root)
-        expect(Utils.is_logical_singleton?([e1, e2])).to be_true
+        expect(Utils.is_logical_singleton?([e1, e2])).to eq(true)
       end # it
 
       it 'should handle partitioned element with config ids' do
@@ -151,7 +151,7 @@ module LibertyBuildpack::Services
         e1.add_attribute('id', 'someid')
         e2 = REXML::Element.new('stanza', doc.root)
         e2.add_attribute('id', 'someid')
-        expect(Utils.is_logical_singleton?([e1, e2])).to be_true
+        expect(Utils.is_logical_singleton?([e1, e2])).to eq(true)
       end # it
 
       it 'should handle partitioned element with mismatched config ids' do
@@ -160,7 +160,7 @@ module LibertyBuildpack::Services
         e1.add_attribute('id', 'someid')
         e2 = REXML::Element.new('stanza', doc.root)
         e2.add_attribute('id', 'otherid')
-        expect(Utils.is_logical_singleton?([e1, e2])).to be_false
+        expect(Utils.is_logical_singleton?([e1, e2])).to eq(false)
       end # it
 
       it 'should handle partitioned element where first has id and second does not' do
@@ -168,7 +168,7 @@ module LibertyBuildpack::Services
         e1 = REXML::Element.new('stanza', doc.root)
         e1.add_attribute('id', 'someid')
         e2 = REXML::Element.new('stanza', doc.root)
-        expect(Utils.is_logical_singleton?([e1, e2])).to be_false
+        expect(Utils.is_logical_singleton?([e1, e2])).to eq(false)
       end # it
 
       it 'should handle partitioned element where second has id and first does not' do
@@ -176,7 +176,7 @@ module LibertyBuildpack::Services
         e1 = REXML::Element.new('stanza', doc.root)
         e2 = REXML::Element.new('stanza', doc.root)
         e2.add_attribute('id', 'someid')
-        expect(Utils.is_logical_singleton?([e1, e2])).to be_false
+        expect(Utils.is_logical_singleton?([e1, e2])).to eq(false)
       end # it
     end # describe test is_logical_singleton?
 
@@ -557,5 +557,63 @@ module LibertyBuildpack::Services
 
     end # describe
 
-  end # describe DataCache
+    describe 'parse_compliant_vcap_service' do
+
+      let(:vcap_services) do
+        { 'myName' =>
+          [{ 'name' => 'myName',
+              'plan' => 'beta',
+              'label' => 'myLabel',
+              'credentials' => {
+                'url' => 'http://foobar',
+                'password' => 'myPassword',
+                'scopes' => %w(singleton request)
+              }
+            }]
+        }
+      end
+
+      def test_result(generated_hash, generated_xml, name, value)
+        expect(generated_hash[name]).to eq(value)
+
+        variables = REXML::XPath.match(generated_xml, "/server/variable[@name='#{name}']")
+        expect(variables).not_to be_empty
+        expect(variables[0].attributes['value']).to eq(value)
+      end
+
+      it 'parse default' do
+        doc = REXML::Document.new('<server></server>')
+        hash = Utils.parse_compliant_vcap_service(doc.root, vcap_services['myName'][0])
+
+        test_result(hash, doc.root, 'cloud.services.myName.name', 'myName')
+        test_result(hash, doc.root, 'cloud.services.myName.plan', 'beta')
+        test_result(hash, doc.root, 'cloud.services.myName.label', 'myLabel')
+        test_result(hash, doc.root, 'cloud.services.myName.connection.url', 'http://foobar')
+        test_result(hash, doc.root, 'cloud.services.myName.connection.password', 'myPassword')
+        test_result(hash, doc.root, 'cloud.services.myName.connection.scopes', 'singleton, request')
+      end
+
+      it 'parse custom' do
+        doc = REXML::Document.new('<server></server>')
+        hash = Utils.parse_compliant_vcap_service(doc.root, vcap_services['myName'][0]) do | name, value |
+          if name == 'credentials.scopes'
+            value = value.join(' ')
+          elsif name == 'plan'
+            value = 'alpha'
+          else
+            value
+          end
+        end
+
+        test_result(hash, doc.root, 'cloud.services.myName.name', 'myName')
+        test_result(hash, doc.root, 'cloud.services.myName.plan', 'alpha')
+        test_result(hash, doc.root, 'cloud.services.myName.label', 'myLabel')
+        test_result(hash, doc.root, 'cloud.services.myName.connection.url', 'http://foobar')
+        test_result(hash, doc.root, 'cloud.services.myName.connection.password', 'myPassword')
+        test_result(hash, doc.root, 'cloud.services.myName.connection.scopes', 'singleton request')
+      end
+
+    end
+
+  end # describe
 end

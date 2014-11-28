@@ -1,6 +1,6 @@
 # Encoding: utf-8
 # IBM WebSphere Application Server Liberty Buildpack
-# Copyright 2013 the original author or authors.
+# Copyright 2013-2014 the original author or authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -26,7 +26,6 @@ module LibertyBuildpack::Container
     LIBERTY_SINGLE_DOWNLOAD_URI = 'test-liberty-uri.tar.gz'.freeze # end of URI (here ".tar.gz") is significant in liberty container code
     LIBERTY_DETAILS = [LIBERTY_VERSION, LIBERTY_SINGLE_DOWNLOAD_URI, 'spec/fixtures/license.html']
     DISABLE_2PC_JAVA_OPT_REGEX = '-Dcom.ibm.tx.jta.disable2PC=true'.freeze
-    HEROKU_ENV_VAR = 'DYNO'.freeze
 
     let(:application_cache) { double('ApplicationCache') }
     let(:component_index) { double('ComponentIndex') }
@@ -56,16 +55,12 @@ module LibertyBuildpack::Container
           )
 
           apps = Dir.glob(File.join(app_dir, '*'))
-          apps.each { |file| expect(File.directory? file).to be_true }
+          apps.each { |file| expect(File.directory? file).to eq(true) }
         end
       end
     end
 
     describe 'detect' do
-      before(:each) do
-         ENV[HEROKU_ENV_VAR] = nil
-      end
-
       it 'should detect WEB-INF' do
         LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
         .and_return(LIBERTY_DETAILS)
@@ -77,7 +72,7 @@ module LibertyBuildpack::Container
         license_ids: {}
         ).detect
 
-        expect(detected).to include('Liberty-WAR:liberty-8.5.5')
+        expect(detected).to eq(%w(WAR liberty-8.5.5))
       end
 
       it 'should detect META-INF' do
@@ -91,7 +86,7 @@ module LibertyBuildpack::Container
         license_ids: {}
         ).detect
 
-        expect(detected).to include('Liberty-EAR:liberty-8.5.5')
+        expect(detected).to eq(%w(EAR liberty-8.5.5))
       end
 
       it 'should not detect when WEB-INF is present in a Java main application' do
@@ -119,7 +114,7 @@ module LibertyBuildpack::Container
         license_ids: {}
         ).detect
 
-        expect(detected).to include('Liberty-SVR-PKG:liberty-8.5.5')
+        expect(detected).to eq(%w(SVR-PKG liberty-8.5.5))
       end
 
       it 'should detect server.xml for a single server push' do
@@ -133,7 +128,7 @@ module LibertyBuildpack::Container
         license_ids: {}
         ).detect
 
-        expect(detected).to include('Liberty-SVR-DIR:liberty-8.5.5')
+        expect(detected).to eq(%w(SVR-DIR liberty-8.5.5))
       end
 
       it 'should throw an error when a server including binaries was pushed' do
@@ -210,34 +205,14 @@ module LibertyBuildpack::Container
         expect(detected).to be_nil
       end
 
-      it 'should update the common_paths provided by the buildpack to include the Liberty container path' do
+      it 'should update the common_paths for Heroku provided by the buildpack to include the Liberty container' do
         LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
         .and_return(LIBERTY_DETAILS)
 
         liberty = Liberty.new(
         app_dir: 'spec/fixtures/container_liberty',
         configuration: {},
-        common_paths: CommonPaths.new,
-        java_home: '',
-        java_opts: [],
-        license_ids: {}
-        )
-        liberty.detect
-
-        actual_common_paths = liberty.instance_variable_get(:@common_paths)
-        expect(actual_common_paths.instance_variable_get(:@relative_location)).to eq('../../../../..')
-      end
-
-      it 'should update the common_paths provided by the buildpack to include the Liberty container with Heroku path' do
-        LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
-        .and_return(LIBERTY_DETAILS)
-
-        ENV[HEROKU_ENV_VAR] = 'true'
-
-        liberty = Liberty.new(
-        app_dir: 'spec/fixtures/container_liberty',
-        configuration: {},
-        common_paths: CommonPaths.new,
+        common_paths: CommonPaths.new('.'),
         java_home: '',
         java_opts: [],
         license_ids: {}
@@ -246,9 +221,10 @@ module LibertyBuildpack::Container
 
         actual_common_paths = liberty.instance_variable_get(:@common_paths)
         expect(actual_common_paths.instance_variable_get(:@relative_location)).to eq('../../../..')
+        expect(actual_common_paths.instance_variable_get(:@relative_to_base)).to eq('../../../..')
       end
 
-      it 'should use Liberty path when common_paths is not provided in the context' do
+      it 'should update the common_paths for CF default to Liberty path when common_paths is not provided in the context' do
         LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
         .and_return(LIBERTY_DETAILS)
 
@@ -262,7 +238,8 @@ module LibertyBuildpack::Container
         liberty.detect
 
         actual_common_paths = liberty.instance_variable_get(:@common_paths)
-        expect(actual_common_paths.instance_variable_get(:@relative_location)).to eq('../../../../..')
+        expect(actual_common_paths.instance_variable_get(:@relative_location)).to eq('../../../..')
+        expect(actual_common_paths.instance_variable_get(:@relative_to_base)).to eq('../../../../..')
       end
 
     end
@@ -316,17 +293,17 @@ module LibertyBuildpack::Container
           default_server_xml = File.join liberty_dir, 'templates', 'servers', 'defaultServer', 'server.xml'
           rest_connector = File.join liberty_dir, 'clients', 'restConnector.jar'
 
-          expect(File.exists?(File.join bin_dir, 'server')).to be_true
-          expect(File.exists?(File.join bin_dir, 'featureManager')).to be_true
-          expect(File.exists?(File.join bin_dir, 'securityUtility')).to be_true
-          expect(File.exists?(File.join bin_dir, 'productInfo')).to be_true
-          expect(File.exists?(default_server_xml)).to be_true
-          expect(File.exists?(rest_connector)).to be_true
+          expect(File.exists?(File.join bin_dir, 'server')).to eq(true)
+          expect(File.exists?(File.join bin_dir, 'featureManager')).to eq(true)
+          expect(File.exists?(File.join bin_dir, 'securityUtility')).to eq(true)
+          expect(File.exists?(File.join bin_dir, 'productInfo')).to eq(true)
+          expect(File.exists?(default_server_xml)).to eq(true)
+          expect(File.exists?(rest_connector)).to eq(true)
 
           icap_properties = File.join liberty_dir, 'etc', 'extensions', 'icap.properties'
-          expect(File.exists?(icap_properties)).to be_true
+          expect(File.exists?(icap_properties)).to eq(true)
           icap_properties_content = File.read icap_properties
-          expect(icap_properties_content.include? 'productInstall=.liberty/icap').to be_true
+          expect(icap_properties_content.include? 'productInstall=.liberty/icap').to eq(true)
         end
       end
 
@@ -358,12 +335,12 @@ module LibertyBuildpack::Container
           default_server_xml = File.join liberty_dir, 'templates', 'servers', 'defaultServer', 'server.xml'
           rest_connector = File.join liberty_dir, 'clients', 'restConnector.jar'
 
-          expect(File.exists?(File.join bin_dir, 'server')).to be_true
-          expect(File.exists?(File.join bin_dir, 'featureManager')).to be_true
-          expect(File.exists?(File.join bin_dir, 'securityUtility')).to be_true
-          expect(File.exists?(File.join bin_dir, 'productInfo')).to be_true
-          expect(File.exists?(default_server_xml)).to be_true
-          expect(File.exists?(rest_connector)).to be_true
+          expect(File.exists?(File.join bin_dir, 'server')).to eq(true)
+          expect(File.exists?(File.join bin_dir, 'featureManager')).to eq(true)
+          expect(File.exists?(File.join bin_dir, 'securityUtility')).to eq(true)
+          expect(File.exists?(File.join bin_dir, 'productInfo')).to eq(true)
+          expect(File.exists?(default_server_xml)).to eq(true)
+          expect(File.exists?(rest_connector)).to eq(true)
         end
       end
 
@@ -394,12 +371,12 @@ module LibertyBuildpack::Container
           default_server_xml = File.join liberty_dir, 'templates', 'servers', 'defaultServer', 'server.xml'
           rest_connector = File.join liberty_dir, 'clients', 'restConnector.jar'
 
-          expect(File.exists?(File.join bin_dir, 'server')).to be_true
-          expect(File.exists?(File.join bin_dir, 'featureManager')).to be_true
-          expect(File.exists?(File.join bin_dir, 'securityUtility')).to be_true
-          expect(File.exists?(File.join bin_dir, 'productInfo')).to be_true
-          expect(File.exists?(default_server_xml)).to be_true
-          expect(File.exists?(rest_connector)).to be_true
+          expect(File.exists?(File.join bin_dir, 'server')).to eq(true)
+          expect(File.exists?(File.join bin_dir, 'featureManager')).to eq(true)
+          expect(File.exists?(File.join bin_dir, 'securityUtility')).to eq(true)
+          expect(File.exists?(File.join bin_dir, 'productInfo')).to eq(true)
+          expect(File.exists?(default_server_xml)).to eq(true)
+          expect(File.exists?(rest_connector)).to eq(true)
         end
       end
 
@@ -431,8 +408,8 @@ module LibertyBuildpack::Container
           license_ids: { 'IBM_LIBERTY_LICENSE' => '1234-ABCD' }
           ).compile
 
-          expect(File.exists?(File.join root, '.java', 'overlay.txt')).to be_true
-          expect(File.exists?(File.join root, '.java', 'test.txt')).to be_true
+          expect(File.exists?(File.join root, '.java', 'overlay.txt')).to eq(true)
+          expect(File.exists?(File.join root, '.java', 'test.txt')).to eq(true)
         end
       end
 
@@ -466,8 +443,8 @@ module LibertyBuildpack::Container
           license_ids: { 'IBM_LIBERTY_LICENSE' => '1234-ABCD' }
           ).compile
 
-          expect(File.exists?(File.join root, '.java', 'overlay.txt')).to be_true
-          expect(File.exists?(File.join root, '.java', 'test.txt')).to be_true
+          expect(File.exists?(File.join root, '.java', 'overlay.txt')).to eq(true)
+          expect(File.exists?(File.join root, '.java', 'test.txt')).to eq(true)
         end
       end
 
@@ -502,9 +479,9 @@ module LibertyBuildpack::Container
           ).compile
 
           server_script = File.join(root, '.liberty', 'bin', 'server')
-          expect(File.exists?(server_script)).to be_true
-          expect(File.executable?(server_script)).to be_true
-          expect(File.directory? war_file).to be_true
+          expect(File.exists?(server_script)).to eq(true)
+          expect(File.executable?(server_script)).to eq(true)
+          expect(File.directory? war_file).to eq(true)
         end
       end
 
@@ -531,7 +508,7 @@ module LibertyBuildpack::Container
           ).compile
 
           server_script = File.join(root, '.liberty', 'bin', 'server')
-          expect(File.executable?(server_script)).to be_true
+          expect(File.executable?(server_script)).to eq(true)
         end
       end
 
@@ -558,7 +535,7 @@ module LibertyBuildpack::Container
           ).compile
 
           server_script = File.join(root, '.liberty', 'bin', 'server')
-          expect(File.executable?(server_script)).to be_true
+          expect(File.executable?(server_script)).to eq(true)
         end
       end
 
@@ -586,16 +563,16 @@ module LibertyBuildpack::Container
           license_ids: { 'IBM_LIBERTY_LICENSE' => '1234-ABCD' }
           ).compile
           server_xml_file = File.join root, '.liberty', 'usr', 'servers', 'defaultServer', 'server.xml'
-          expect(File.exists?(server_xml_file)).to be_true
+          expect(File.exists?(server_xml_file)).to eq(true)
 
           server_xml_contents = File.read(server_xml_file)
-          expect(server_xml_contents.include? '<featureManager>').to be_true
-          expect(server_xml_contents.include? '<application name="myapp" context-root="/" location="myapp"').to be_true
-          expect(server_xml_contents.include? 'type="war"').to be_true
-          expect(server_xml_contents.include? 'httpPort="${port}"').to be_true
-          expect(server_xml_contents.include? '<httpDispatcher enableWelcomePage="false"/>').to be_true
-          expect(server_xml_contents.include? '<config updateTrigger="mbean"/>').to be_true
-          expect(server_xml_contents.include? '<applicationMonitor dropinsEnabled="false" updateTrigger="mbean"/>').to be_true
+          expect(server_xml_contents.include? '<featureManager>').to eq(true)
+          expect(server_xml_contents.include? '<application name="myapp" context-root="/" location="myapp"').to eq(true)
+          expect(server_xml_contents.include? 'type="war"').to eq(true)
+          expect(server_xml_contents.include? 'httpPort="${port}"').to eq(true)
+          expect(server_xml_contents.include? '<httpDispatcher enableWelcomePage="false"/>').to eq(true)
+          expect(server_xml_contents.include? '<config updateTrigger="mbean"/>').to eq(true)
+          expect(server_xml_contents.include? '<applicationMonitor dropinsEnabled="false" updateTrigger="mbean"/>').to eq(true)
         end
       end
 
@@ -624,7 +601,7 @@ module LibertyBuildpack::Container
           license_ids: { 'IBM_LIBERTY_LICENSE' => '1234-ABCD' }
           ).compile
 
-          expect(File.exists?(droplet_yaml_file)).to be_true
+          expect(File.exists?(droplet_yaml_file)).to eq(true)
 
           droplet_yaml_content = YAML.load(File.read droplet_yaml_file)
           expect(droplet_yaml_content).to have_key('state_file')
@@ -657,7 +634,7 @@ module LibertyBuildpack::Container
           license_ids: { 'IBM_LIBERTY_LICENSE' => '1234-ABCD' }
           ).compile
 
-          expect(File.exists?(droplet_yaml_file)).to be_false
+          expect(File.exists?(droplet_yaml_file)).to eq(false)
         end
       end
 
@@ -685,15 +662,15 @@ module LibertyBuildpack::Container
           license_ids: { 'IBM_LIBERTY_LICENSE' => '1234-ABCD' }
           ).compile
           server_xml_file = File.join root, '.liberty', 'usr', 'servers', 'defaultServer', 'server.xml'
-          expect(File.exists?(server_xml_file)).to be_true
+          expect(File.exists?(server_xml_file)).to eq(true)
 
           server_xml_contents = File.read(server_xml_file)
-          expect(server_xml_contents.include? '<featureManager>').to be_true
-          expect(server_xml_contents.include? '<application name="myapp" context-root="/" location="myapp"').to be_true
-          expect(server_xml_contents.include? 'type="ear"').to be_true
-          expect(server_xml_contents.include? 'httpPort="${port}"').to be_true
-          expect(server_xml_contents.include? '<config updateTrigger="mbean"/>').to be_true
-          expect(server_xml_contents.include? '<applicationMonitor dropinsEnabled="false" updateTrigger="mbean"/>').to be_true
+          expect(server_xml_contents.include? '<featureManager>').to eq(true)
+          expect(server_xml_contents.include? '<application name="myapp" context-root="/" location="myapp"').to eq(true)
+          expect(server_xml_contents.include? 'type="ear"').to eq(true)
+          expect(server_xml_contents.include? 'httpPort="${port}"').to eq(true)
+          expect(server_xml_contents.include? '<config updateTrigger="mbean"/>').to eq(true)
+          expect(server_xml_contents.include? '<applicationMonitor dropinsEnabled="false" updateTrigger="mbean"/>').to eq(true)
         end
       end
 
@@ -722,16 +699,16 @@ module LibertyBuildpack::Container
           ).compile
 
           liberty_directory = File.join(root, '.liberty')
-          expect(Dir.exists?(liberty_directory)).to be_true
+          expect(Dir.exists?(liberty_directory)).to eq(true)
 
           server_command = File.join(root, '.liberty', 'bin', 'server')
-          expect(File.exists?(server_command)).to be_true
+          expect(File.exists?(server_command)).to eq(true)
 
           license_files = File.join(root, '.liberty', 'lafiles')
-          expect(Dir.exists?(license_files)).to be_true
+          expect(Dir.exists?(license_files)).to eq(true)
 
           usr_directory = File.join(root, '.liberty', 'usr')
-          expect(File.symlink?(usr_directory)).to be_true
+          expect(File.symlink?(usr_directory)).to eq(true)
           expect(File.readlink(usr_directory)).to eq('../wlp/usr')
         end
 
@@ -762,13 +739,13 @@ module LibertyBuildpack::Container
           ).compile
 
           feature_lib_dir = File.join(root, '.liberty', 'usr', 'extension', 'lib')
-          expect(Dir.exists?(feature_lib_dir)).to be_true
+          expect(Dir.exists?(feature_lib_dir)).to eq(true)
           jar_file = File.join(feature_lib_dir, 'dummy_feature.jar')
-          expect(File.exists?(jar_file)).to be_true
+          expect(File.exists?(jar_file)).to eq(true)
           mf_dir = File.join(feature_lib_dir, 'features')
-          expect(Dir.exists?(mf_dir)).to be_true
+          expect(Dir.exists?(mf_dir)).to eq(true)
           mf_file = File.join(mf_dir, 'dummy_feature.mf')
-          expect(File.exists?(mf_file)).to be_true
+          expect(File.exists?(mf_file)).to eq(true)
         end
       end
 
@@ -805,17 +782,17 @@ module LibertyBuildpack::Container
           ).compile
 
           feature_lib_dir = File.join(root, '.liberty', 'usr', 'extension', 'lib')
-          expect(Dir.exists?(feature_lib_dir)).to be_true
+          expect(Dir.exists?(feature_lib_dir)).to eq(true)
           jar_file = File.join(feature_lib_dir, 'dummy_feature.jar')
-          expect(File.exists?(jar_file)).to be_true
+          expect(File.exists?(jar_file)).to eq(true)
           jar_file = File.join(feature_lib_dir, 'existing.jar')
-          expect(File.exists?(jar_file)).to be_true
+          expect(File.exists?(jar_file)).to eq(true)
           mf_dir = File.join(feature_lib_dir, 'features')
-          expect(Dir.exists?(mf_dir)).to be_true
+          expect(Dir.exists?(mf_dir)).to eq(true)
           mf_file = File.join(mf_dir, 'dummy_feature.mf')
-          expect(File.exists?(mf_file)).to be_true
+          expect(File.exists?(mf_file)).to eq(true)
           mf_file = File.join(mf_dir, 'existing.mf')
-          expect(File.exists?(mf_file)).to be_true
+          expect(File.exists?(mf_file)).to eq(true)
         end
       end
 
@@ -844,23 +821,23 @@ module LibertyBuildpack::Container
           ).compile
 
           liberty_directory = File.join(root, '.liberty')
-          expect(Dir.exists?(liberty_directory)).to be_true
+          expect(Dir.exists?(liberty_directory)).to eq(true)
 
           server_command = File.join(root, '.liberty', 'bin', 'server')
-          expect(File.exists?(server_command)).to be_true
+          expect(File.exists?(server_command)).to eq(true)
 
           license_files = File.join(root, '.liberty', 'lafiles')
-          expect(Dir.exists?(license_files)).to be_true
+          expect(Dir.exists?(license_files)).to eq(true)
 
           default_server_directory = File.join(root, '.liberty', 'usr', 'servers', 'defaultServers')
           expect(Dir.exists?(default_server_directory))
 
           usr_symlink = File.join(root, '.liberty', 'usr', 'servers', 'defaultServer', 'server.xml')
-          expect(File.symlink?(usr_symlink)).to be_true
+          expect(File.symlink?(usr_symlink)).to eq(true)
           expect(File.readlink(usr_symlink)).to eq(Pathname.new(File.join(root, 'server.xml')).relative_path_from(Pathname.new(default_server_directory)).to_s)
 
           server_xml_file = File.join root, '.liberty', 'usr', 'servers', 'defaultServer', 'server.xml'
-          expect(File.exists?(server_xml_file)).to be_true
+          expect(File.exists?(server_xml_file)).to eq(true)
 
           server_xml_contents = File.read(server_xml_file)
           endpoints = REXML::XPath.match(REXML::Document.new(server_xml_contents), '/server/httpEndpoint')
@@ -972,15 +949,15 @@ module LibertyBuildpack::Container
           ).compile
 
           liberty_directory = File.join(root, '.liberty')
-          expect(Dir.exists?(liberty_directory)).to be_true
+          expect(Dir.exists?(liberty_directory)).to eq(true)
 
           server_xml_file = File.join(root, 'wlp', 'usr', 'servers', 'myServer', 'server.xml')
           server_xml_contents = File.read server_xml_file
-          expect(server_xml_contents.include? 'host="*"').to be_true
-          expect(server_xml_contents.include? 'httpPort="${port}"').to be_true
-          expect(server_xml_contents.include? 'httpsPort=').to be_false
+          expect(server_xml_contents.include? 'host="*"').to eq(true)
+          expect(server_xml_contents.include? 'httpPort="${port}"').to eq(true)
+          expect(server_xml_contents.include? 'httpsPort=').to eq(false)
           expect(server_xml_contents).to match(/<webContainer trustHostHeaderPort='true' extractHostHeaderPort='true'\/>/)
-          expect(File.exists?(droplet_yaml_file)).to be_false
+          expect(File.exists?(droplet_yaml_file)).to eq(false)
         end
       end
 
@@ -1009,7 +986,7 @@ module LibertyBuildpack::Container
           ).compile
 
           liberty_directory = File.join(root, '.liberty')
-          expect(Dir.exists?(liberty_directory)).to be_true
+          expect(Dir.exists?(liberty_directory)).to eq(true)
 
           server_xml_file = File.join(root, 'wlp', 'usr', 'servers', 'myServer', 'server.xml')
           server_xml_contents = File.read server_xml_file
@@ -1042,7 +1019,7 @@ module LibertyBuildpack::Container
           ).compile
 
           liberty_directory = File.join(root, '.liberty')
-          expect(Dir.exists?(liberty_directory)).to be_true
+          expect(Dir.exists?(liberty_directory)).to eq(true)
 
           server_xml_file = File.join(root, 'wlp', 'usr', 'servers', 'myServer', 'server.xml')
           server_xml_contents = File.read server_xml_file
@@ -1081,50 +1058,12 @@ module LibertyBuildpack::Container
           ).compile
 
           liberty_directory = File.join(root, '.liberty')
-          expect(Dir.exists?(liberty_directory)).to be_true
+          expect(Dir.exists?(liberty_directory)).to eq(true)
 
           server_xml_file = File.join(root, 'wlp', 'usr', 'servers', 'myServer', 'server.xml')
           server_xml_contents = File.read server_xml_file
           expect(server_xml_contents).to match(/<config updateTrigger='mbean'\/>/)
           expect(server_xml_contents).to match(/<applicationMonitor dropinsEnabled='true' updateTrigger='mbean'\/>/)
-        end
-      end
-
-      it 'should add droplet.yaml when server xml contains myapp application' do
-        Dir.mktmpdir do |root|
-          droplet_yaml_file = File.join root, 'droplet.yaml'
-          root = File.join(root, 'app')
-          FileUtils.mkdir_p File.join(root, 'wlp', 'usr', 'servers', 'myServer')
-          File.open(File.join(root, 'wlp', 'usr', 'servers', 'myServer', 'server.xml'), 'w') do |file|
-            file.write("<server><httpEndpoint id=\"defaultHttpEndpoint\" host=\"localhost\" httpPort=\"9080\" httpsPort=\"9443\" /><application name=\"myapp\" /></server>")
-          end
-
-          LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
-            .and_return(LIBERTY_DETAILS)
-
-          LibertyBuildpack::Repository::ComponentIndex.stub(:new).and_return(component_index)
-          component_index.stub(:components).and_return({ 'liberty_core' => LIBERTY_SINGLE_DOWNLOAD_URI })
-
-          LibertyBuildpack::Util::ApplicationCache.stub(:new).and_return(application_cache)
-          application_cache.stub(:get).with(LIBERTY_SINGLE_DOWNLOAD_URI).and_yield(File.open('spec/fixtures/wlp-stub.tar.gz'))
-
-          Liberty.new(
-            app_dir: root,
-            configuration: {},
-            environment: {},
-            license_ids: { 'IBM_LIBERTY_LICENSE' => '1234-ABCD' }
-          ).compile
-
-          liberty_directory = File.join root, '.liberty'
-          expect(Dir.exists?(liberty_directory)).to be_true
-
-          server_xml_file = File.join(root, 'wlp', 'usr', 'servers', 'myServer', 'server.xml')
-          server_xml_contents = File.read(server_xml_file)
-          expect(server_xml_contents.include? "<httpDispatcher enableWelcomePage='false'/>").to be_true
-          expect(server_xml_contents.include? "<config updateTrigger='mbean'/>").to be_true
-          expect(server_xml_contents.include? "<applicationMonitor dropinsEnabled='false' updateTrigger='mbean'/>").to be_true
-
-          expect(File.exists?(droplet_yaml_file)).to be_true
         end
       end
 
@@ -1174,7 +1113,7 @@ module LibertyBuildpack::Container
           ).compile
 
           original_xml_file = File.join(root, 'container_liberty_server_with_includes', 'wlp', 'usr', 'servers', 'myServer', 'server.xml.org')
-          expect(File.file?(original_xml_file)).to be_true
+          expect(File.file?(original_xml_file)).to eq(true)
 
           server_xml_file = File.join(root, 'container_liberty_server_with_includes', 'wlp', 'usr', 'servers', 'myServer', 'server.xml')
           server_xml_contents = File.read(server_xml_file)
@@ -1211,7 +1150,7 @@ module LibertyBuildpack::Container
           ).compile
 
           original_xml_file = File.join(root, 'container_liberty_server_with_includes_property', 'wlp', 'usr', 'servers', 'myServer', 'server.xml.org')
-          expect(File.file?(original_xml_file)).to be_true
+          expect(File.file?(original_xml_file)).to eq(true)
 
           server_xml_file = File.join(root, 'container_liberty_server_with_includes_property', 'wlp', 'usr', 'servers', 'myServer', 'server.xml')
           server_xml_contents = File.read(server_xml_file)
@@ -1244,7 +1183,7 @@ module LibertyBuildpack::Container
           ).compile
 
           original_xml_file = File.join(root, 'container_liberty_server_with_includes_ignored', 'wlp', 'usr', 'servers', 'myServer', 'server.xml.org')
-          expect(File.file?(original_xml_file)).to be_true
+          expect(File.file?(original_xml_file)).to eq(true)
 
           server_xml_file = File.join(root, 'container_liberty_server_with_includes_ignored', 'wlp', 'usr', 'servers', 'myServer', 'server.xml')
           server_xml_contents = File.read(server_xml_file)
@@ -1303,315 +1242,303 @@ module LibertyBuildpack::Container
       end
     end
 
+    it 'should work with a server.xml file that contains non-ASCII characters' do
+      Dir.mktmpdir do |root|
+        FileUtils.cp_r('spec/fixtures/container_liberty_server_non_ascii_chars', root)
+
+        LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
+        .and_return(LIBERTY_DETAILS)
+
+        LibertyBuildpack::Repository::ComponentIndex.stub(:new).and_return(component_index)
+        component_index.stub(:components).and_return({ 'liberty_core' => LIBERTY_SINGLE_DOWNLOAD_URI })
+
+        LibertyBuildpack::Util::ApplicationCache.stub(:new).and_return(application_cache)
+        application_cache.stub(:get).with(LIBERTY_SINGLE_DOWNLOAD_URI).and_yield(File.open('spec/fixtures/wlp-stub.tar.gz'))
+
+        Liberty.new(
+          app_dir: File.join(root, 'container_liberty_server_non_ascii_chars'),
+          configuration: {},
+          environment: {},
+          license_ids: { 'IBM_LIBERTY_LICENSE' => '1234-ABCD' }
+        ).compile
+      end
+    end
+
+    context 'droplet.yaml' do
+
+      def generate(root, xml)
+          FileUtils.mkdir_p File.join(root, 'wlp', 'usr', 'servers', 'myServer')
+          File.open(File.join(root, 'wlp', 'usr', 'servers', 'myServer', 'server.xml'), 'w') do |file|
+            file.write("<server><httpEndpoint id=\"defaultHttpEndpoint\" host=\"localhost\" httpPort=\"9080\" httpsPort=\"9443\" />#{xml}</server>")
+          end
+
+          LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
+            .and_return(LIBERTY_DETAILS)
+
+          LibertyBuildpack::Repository::ComponentIndex.stub(:new).and_return(component_index)
+          component_index.stub(:components).and_return({ 'liberty_core' => LIBERTY_SINGLE_DOWNLOAD_URI })
+
+          LibertyBuildpack::Util::ApplicationCache.stub(:new).and_return(application_cache)
+          application_cache.stub(:get).with(LIBERTY_SINGLE_DOWNLOAD_URI).and_yield(File.open('spec/fixtures/wlp-stub.tar.gz'))
+
+          Liberty.new(
+            app_dir: root,
+            configuration: {},
+            environment: {},
+            license_ids: { 'IBM_LIBERTY_LICENSE' => '1234-ABCD' }
+          ).compile
+      end
+
+      def check_appstate(app_xml, app_name)
+        Dir.mktmpdir do |root|
+          droplet_yaml_file = File.join root, 'droplet.yaml'
+          root = File.join(root, 'app')
+
+          generate(root, app_xml)
+
+          liberty_directory = File.join root, '.liberty'
+          expect(Dir.exists?(liberty_directory)).to eq(true)
+
+          server_xml_file = File.join(root, 'wlp', 'usr', 'servers', 'myServer', 'server.xml')
+          server_xml_contents = File.read(server_xml_file)
+          expect(server_xml_contents).to include("<httpDispatcher enableWelcomePage='false'/>")
+          expect(server_xml_contents).to include("<config updateTrigger='mbean'/>")
+          expect(server_xml_contents).to include("<applicationMonitor dropinsEnabled='false' updateTrigger='mbean'/>")
+          expect(server_xml_contents).to include("<appstate appName='#{app_name}' markerPath='${home}/.liberty.state'/>")
+
+          expect(File.exists?(droplet_yaml_file)).to eq(true)
+        end
+      end
+
+      def check_no_appstate(app_xml)
+        Dir.mktmpdir do |root|
+          droplet_yaml_file = File.join root, 'droplet.yaml'
+          root = File.join(root, 'app')
+
+          generate(root, app_xml)
+
+          liberty_directory = File.join root, '.liberty'
+          expect(Dir.exists?(liberty_directory)).to eq(true)
+
+          server_xml_file = File.join(root, 'wlp', 'usr', 'servers', 'myServer', 'server.xml')
+          server_xml_contents = File.read(server_xml_file)
+          expect(server_xml_contents).to include("<httpDispatcher enableWelcomePage='false'/>")
+          expect(server_xml_contents).to include("<config updateTrigger='mbean'/>")
+          expect(server_xml_contents).to include("<applicationMonitor dropinsEnabled='false' updateTrigger='mbean'/>")
+          expect(server_xml_contents).not_to match(/<appstate.*\/>/)
+
+          expect(File.exists?(droplet_yaml_file)).to eq(false)
+        end
+      end
+
+      it 'should add droplet.yaml when server xml contains myapp application' do
+        check_appstate("<application name=\"myapp\" />", 'myapp')
+      end
+
+      it 'should add droplet.yaml when server xml contains foo application' do
+        check_appstate("<application name=\"foo\" />", 'foo')
+      end
+
+      it 'should add droplet.yaml when server xml contains foo webApplication' do
+        check_appstate("<webApplication name=\"fooWar\" />", 'fooWar')
+      end
+
+      it 'should add droplet.yaml when server xml contains foo enterpriseApplication' do
+        check_appstate("<enterpriseApplication name=\"fooEar\" />", 'fooEar')
+      end
+
+      it 'should NOT add droplet.yaml when server xml contains two applications' do
+        check_no_appstate("<application name=\"foo\" /><application name=\"foo2\" />")
+      end
+
+      it 'should NOT add droplet.yaml when server xml contains two webApplications' do
+        check_no_appstate("<webApplication name=\"fooWar\" /><webApplication name=\"fooWar2\" />")
+      end
+
+      it 'should NOT add droplet.yaml when server xml contains two enterpriseApplications' do
+        check_no_appstate("<enterpriseApplication name=\"fooEar\" /><enterpriseApplication name=\"fooEar2\" />")
+      end
+
+      it 'should NOT add droplet.yaml when server xml contains two different application types' do
+        check_no_appstate("<application name=\"foo\" /><webApplication name=\"fooWar\" />")
+      end
+
+    end
+
     describe 'release' do
-      it 'should generate a jvm.options file if one is not provided in server package case' do
-        Dir.mktmpdir do |root|
-          liberty_home = File.join(root, '.liberty')
-          FileUtils.mkdir_p liberty_home
-          FileUtils.ln_sf(Pathname.new(File.join(root, 'wlp', 'usr')).relative_path_from(Pathname.new(liberty_home)), liberty_home)
-          FileUtils.mkdir_p File.join(root, 'wlp', 'usr', 'servers', 'anyServer')
-          File.open(File.join(root, 'wlp', 'usr', 'servers', 'anyServer', 'server.xml'), 'w') do |file|
-            file.write('your text')
+      let(:test_java_home) { 'test-java-home' }
+
+      context 'JVM Options' do
+        def create_server_xml(path, text = 'your text')
+          FileUtils.mkdir_p(path)
+          File.open(File.join(path, 'server.xml'), 'w') do |file|
+            file.write(text)
           end
-
-          LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
-          .and_return(LIBERTY_DETAILS)
-
-          LibertyBuildpack::Util::ApplicationCache.stub(:new).and_return(application_cache)
-          application_cache.stub(:get).with(LIBERTY_SINGLE_DOWNLOAD_URI).and_yield(File.open('spec/fixtures/wlp-stub.jar'))
-
-          library_directory = File.join(root, '.lib')
-          FileUtils.mkdir_p(library_directory)
-          Liberty.new(
-          app_dir: root,
-          lib_directory: library_directory,
-          configuration: {},
-          environment: {},
-          java_opts: %w(test-opt-2 test-opt-1),
-          license_ids: { 'IBM_LIBERTY_LICENSE' => '1234-ABCD' }
-          ).release
-
-          jvm_options_file = File.join(root, 'wlp', 'usr', 'servers', 'anyServer', 'jvm.options')
-          expect(File.exists?(jvm_options_file)).to be_true
-          file_contents = File.read(jvm_options_file)
-          expect(file_contents).to match(/test-opt-1/)
-          expect(file_contents).to match(/test-opt-2/)
-          expect(file_contents).to match(DISABLE_2PC_JAVA_OPT_REGEX)
         end
-      end
 
-      it 'should generate a jvm.options file if one is not provided in server directory case' do
-        Dir.mktmpdir do |root|
-          FileUtils.mkdir_p File.join(root, '.liberty', 'usr', 'servers', 'defaultServer')
-          File.open(File.join(root, 'server.xml'), 'w') do |file|
-            file.write('your text')
+        def create_jvm_options(path, text)
+          File.open(File.join(path, 'jvm.options'), 'w') do |file|
+            file.write(text)
           end
-
-          LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
-          .and_return(LIBERTY_DETAILS)
-
-          LibertyBuildpack::Util::ApplicationCache.stub(:new).and_return(application_cache)
-          application_cache.stub(:get).with(LIBERTY_SINGLE_DOWNLOAD_URI).and_yield(File.open('spec/fixtures/wlp-stub.jar'))
-
-          library_directory = File.join(root, '.lib')
-          FileUtils.mkdir_p(library_directory)
-          Liberty.new(
-          app_dir: root,
-          lib_directory: library_directory,
-          configuration: {},
-          environment: {},
-          java_opts: %w(test-opt-2 test-opt-1),
-          license_ids: { 'IBM_LIBERTY_LICENSE' => '1234-ABCD' }
-          ).release
-
-          jvm_options_file = File.join(root, 'jvm.options')
-          expect(File.exists?(jvm_options_file)).to be_true
-          expect(File.read(jvm_options_file)).to match(/test-opt-1/)
-
-          jvm_options_file = File.join(root, '.liberty', 'usr', 'servers', 'defaultServer', 'jvm.options')
-          expect(File.exists?(jvm_options_file)).to be_true
-          file_contents = File.read(jvm_options_file)
-          expect(file_contents).to match(/test-opt-1/)
-          expect(file_contents).to match(/test-opt-2/)
-          expect(file_contents).to match(DISABLE_2PC_JAVA_OPT_REGEX)
         end
-      end
 
-      it 'should use jvm.options file if one is provided in server package case.' do
-        Dir.mktmpdir do |root|
-          Dir.mkdir File.join(root, 'WEB-INF')
-          liberty_home = File.join(root, '.liberty')
-          FileUtils.mkdir_p liberty_home
-          FileUtils.ln_sf(Pathname.new(File.join(root, 'wlp', 'usr')).relative_path_from(Pathname.new(liberty_home)), liberty_home)
-          FileUtils.mkdir_p File.join(root, 'wlp', 'usr', 'servers', 'defaultServer')
-          File.open(File.join(root, 'wlp', 'usr', 'servers', 'defaultServer', 'server.xml'), 'w') do |file|
-            file.write('your text')
+        def jvm_opts(jvm_options_file)
+          expect(File.exists?(jvm_options_file)).to eq(true)
+          File.read(jvm_options_file)
+        end
+
+        # Helper method for setting up the tests that check for the jvm options file contents during the release
+        # stage. It will return the contents of the expected jvm options file as specified in the parameters,
+        # relative to the root of the application directory, after the release stage has executed.
+        #
+        # @param [String]   name and path of the jvm options file relative to the application directory to be tested
+        # @param [String]   name and path of an optional jvm options file relative to the application directory to be tested
+        def jvm_opt_test(jvmfile1, jvmfile2 = nil)
+          # basic context that test cases can customize
+          context = { configuration: {}, environment: {} }
+
+          Dir.mktmpdir do |root|
+            # each app directory requires a .liberty
+            liberty_home = File.join(root, '.liberty')
+            FileUtils.mkdir_p liberty_home
+
+            # create the common context keys that each test can use
+            context[:app_dir] = root
+            library_directory = File.join(root, '.lib')
+            FileUtils.mkdir_p(library_directory)
+            context[:lib_directory] = library_directory
+            context[:license_ids] = { 'IBM_LIBERTY_LICENSE' => '1234-ABCD' }
+
+            # create repository stubs
+            LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
+            .and_return(LIBERTY_DETAILS)
+
+            LibertyBuildpack::Util::ApplicationCache.stub(:new).and_return(application_cache)
+            application_cache.stub(:get).with(LIBERTY_SINGLE_DOWNLOAD_URI).and_yield(File.open('spec/fixtures/wlp-stub.jar'))
+
+            # provide the unit tests with the application root directory and basic context to customize
+            yield root, context, liberty_home
+
+            # Invoke the Liberty release stage
+            Liberty.new(context).release
+
+            # read the resulting jvm.options file(s) and return its contents for test validation
+            file_contents1 = jvm_opts(File.join(root, jvmfile1)) if jvmfile1
+            file_contents2 = jvm_opts(File.join(root, jvmfile2)) if jvmfile2
+
+            jvmfile2.nil? ? file_contents1 : [file_contents1, file_contents2]
           end
-          File.open(File.join(root, 'wlp', 'usr', 'servers', 'defaultServer', 'jvm.options'), 'w') do |file|
-            file.write('provided-opt-1')
+        end
+
+        it 'should generate a jvm.options file if one is not provided in server package case' do
+          jvm_opts = jvm_opt_test(File.join('wlp', 'usr', 'servers', 'anyServer', 'jvm.options')) do |root, context, liberty_home|
+
+            FileUtils.ln_sf(Pathname.new(File.join(root, 'wlp', 'usr')).relative_path_from(Pathname.new(liberty_home)), liberty_home)
+            create_server_xml(File.join(root, 'wlp', 'usr', 'servers', 'anyServer'))
+
+            context[:java_opts] = %w(test-opt-2 test-opt-1)
           end
 
-          LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
-          .and_return(LIBERTY_DETAILS)
+          expect(jvm_opts).to match(/test-opt-1/)
+          expect(jvm_opts).to match(/test-opt-2/)
+          expect(jvm_opts).to match(DISABLE_2PC_JAVA_OPT_REGEX)
+        end
 
-          LibertyBuildpack::Util::ApplicationCache.stub(:new).and_return(application_cache)
-          application_cache.stub(:get).with(LIBERTY_SINGLE_DOWNLOAD_URI).and_yield(File.open('spec/fixtures/wlp-stub.jar'))
+        it 'should generate a jvm.options file if one is not provided in server directory case' do
+          root_jvm_opts, server_jvm_opts = jvm_opt_test('jvm.options', File.join('.liberty', 'usr', 'servers', 'defaultServer', 'jvm.options')) do |root, context|
+            FileUtils.mkdir_p File.join(root, '.liberty', 'usr', 'servers', 'defaultServer')
+            create_server_xml(root)
+            context[:java_opts] = %w(test-opt-2 test-opt-1)
+          end
 
-          library_directory = File.join(root, '.lib')
-          FileUtils.mkdir_p(library_directory)
-          Liberty.new(
-          app_dir: root,
-          lib_directory: library_directory,
-          configuration: {},
-          environment: {},
-          java_opts: %w(test-opt-2 test-opt-1), # default options, normally set by jre (ibmjdk.rb) before container (liberty.rb) code
-          license_ids: { 'IBM_LIBERTY_LICENSE' => '1234-ABCD' }
-          ).release
+          expect(root_jvm_opts).to match(/test-opt-1/)
 
-          jvm_options_file = File.join(root, 'wlp', 'usr', 'servers', 'defaultServer', 'jvm.options')
-          expect(File.exists?(jvm_options_file)).to be_true
-          file_contents = File.read(jvm_options_file)
-          expect(file_contents).to match(/provided-opt-1/)
-          expect(file_contents).to match(/test-opt-1/)
-          expect(file_contents).to match(/test-opt-2/)
-          expect(file_contents).to match(DISABLE_2PC_JAVA_OPT_REGEX)
+          expect(server_jvm_opts).to match(/test-opt-1/)
+          expect(server_jvm_opts).to match(/test-opt-2/)
+          expect(server_jvm_opts).to match(DISABLE_2PC_JAVA_OPT_REGEX)
+        end
+
+        it 'should use jvm.options file if one is provided in server package case.' do
+          jvm_opts = jvm_opt_test(File.join('wlp', 'usr', 'servers', 'defaultServer', 'jvm.options')) do |root, context, liberty_home|
+            Dir.mkdir File.join(root, 'WEB-INF')
+
+            FileUtils.ln_sf(Pathname.new(File.join(root, 'wlp', 'usr')).relative_path_from(Pathname.new(liberty_home)), liberty_home)
+            FileUtils.mkdir_p File.join(root, 'wlp', 'usr', 'servers', 'defaultServer')
+
+            create_server_xml(File.join(root, 'wlp', 'usr', 'servers', 'defaultServer'))
+            create_jvm_options(File.join(root, 'wlp', 'usr', 'servers', 'defaultServer'), 'provided-opt-1')
+
+            context[:java_opts] = %w(test-opt-2 test-opt-1) # default options, normally set by jre (ibmjdk.rb) before container (liberty.rb) code
+          end
+
+          expect(jvm_opts).to match(/provided-opt-1/)
+          expect(jvm_opts).to match(/test-opt-1/)
+          expect(jvm_opts).to match(/test-opt-2/)
+          expect(jvm_opts).to match(DISABLE_2PC_JAVA_OPT_REGEX)
           # default options before user options to allow overriding, each on it's own line.
           # skip options in the regex by allowing multiple or zero collections of : any
           # normal character zero or more times followed by a newline.
-          expect(file_contents).to match(/test-opt-1\n(.*\n)*provided-opt-1\n/)
-          expect(file_contents).to match(/test-opt-2\n(.*\n)*provided-opt-1\n/)
+          expect(jvm_opts).to match(/test-opt-1\n(.*\n)*provided-opt-1\n/)
+          expect(jvm_opts).to match(/test-opt-2\n(.*\n)*provided-opt-1\n/)
         end
-      end
 
-      it 'should use jvm.options file if one is provided in server directory case.' do
-        Dir.mktmpdir do |root|
-          Dir.mkdir File.join(root, 'WEB-INF')
-          FileUtils.mkdir_p File.join(root, '.liberty', 'usr', 'servers', 'defaultServer')
-          File.open(File.join(root, 'server.xml'), 'w') do |file|
-            file.write('your text')
-          end
-          File.open(File.join(root, 'jvm.options'), 'w') do |file|
-            file.write('provided-opt-1')
+        it 'should use jvm.options file if one is provided in server directory case.' do
+          root_jvm_opts, server_jvm_opts = jvm_opt_test('jvm.options', File.join('.liberty', 'usr', 'servers', 'defaultServer', 'jvm.options')) do |root, context, liberty_home|
+            Dir.mkdir File.join(root, 'WEB-INF')
+            FileUtils.mkdir_p File.join(liberty_home, 'usr', 'servers', 'defaultServer')
+            create_server_xml(root)
+            create_jvm_options(root, 'provided-opt-1')
+
+            context[:java_opts] = %w(test-opt-2 test-opt-1) # default options, normally set by jre (ibmjdk.rb) before container (liberty.rb) code
           end
 
-          LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
-          .and_return(LIBERTY_DETAILS)
+          expect(root_jvm_opts).to match(/provided-opt-1/)
+          expect(root_jvm_opts).to match(/test-opt-1/)
 
-          LibertyBuildpack::Util::ApplicationCache.stub(:new).and_return(application_cache)
-          application_cache.stub(:get).with(LIBERTY_SINGLE_DOWNLOAD_URI).and_yield(File.open('spec/fixtures/wlp-stub.jar'))
-
-          library_directory = File.join(root, '.lib')
-          FileUtils.mkdir_p(library_directory)
-          Liberty.new(
-          app_dir: root,
-          lib_directory: library_directory,
-          configuration: {},
-          environment: {},
-          java_opts: %w(test-opt-2 test-opt-1), # default options, normally set by jre (ibmjdk.rb) before container (liberty.rb) code
-          license_ids: { 'IBM_LIBERTY_LICENSE' => '1234-ABCD' }
-          ).release
-
-          jvm_options_file = File.join(root, 'jvm.options')
-          expect(File.exists?(jvm_options_file)).to be_true
-          expect(File.read(jvm_options_file)).to match(/provided-opt-1/)
-          expect(File.read(jvm_options_file)).to match(/test-opt-1/)
-
-          jvm_options_file = File.join(root, '.liberty', 'usr', 'servers', 'defaultServer', 'jvm.options')
-          expect(File.exists?(jvm_options_file)).to be_true
-          file_contents = File.read(jvm_options_file)
-          expect(file_contents).to match(/provided-opt-1/)
-          expect(file_contents).to match(/test-opt-1/)
-          expect(file_contents).to match(/test-opt-2/)
-          expect(file_contents).to match(DISABLE_2PC_JAVA_OPT_REGEX)
+          expect(server_jvm_opts).to match(/provided-opt-1/)
+          expect(server_jvm_opts).to match(/test-opt-1/)
+          expect(server_jvm_opts).to match(/test-opt-2/)
+          expect(server_jvm_opts).to match(DISABLE_2PC_JAVA_OPT_REGEX)
           # default options before user options to allow overriding, each on it's own line.
           # skip options in the regex by allowing multiple or zero collections of : any
           # normal character zero or more times followed by a newline.
-          expect(file_contents).to match(/test-opt-1\n(.*\n)*provided-opt-1\n/)
-          expect(file_contents).to match(/test-opt-2\n(.*\n)*provided-opt-1\n/)
+          expect(server_jvm_opts).to match(/test-opt-1\n(.*\n)*provided-opt-1\n/)
+          expect(server_jvm_opts).to match(/test-opt-2\n(.*\n)*provided-opt-1\n/)
         end
-      end
 
-      it 'should use server jvm.options file instead of the root one if both are provided.' do
-        Dir.mktmpdir do |root|
-          Dir.mkdir File.join(root, 'WEB-INF')
-          liberty_home = File.join(root, '.liberty')
-          FileUtils.mkdir_p liberty_home
-          FileUtils.ln_sf(Pathname.new(File.join(root, 'wlp', 'usr')).relative_path_from(Pathname.new(liberty_home)), liberty_home)
-          FileUtils.mkdir_p File.join(root, 'wlp', 'usr', 'servers', 'defaultServer')
-          File.open(File.join(root, 'wlp', 'usr', 'servers', 'defaultServer', 'server.xml'), 'w') do |file|
-            file.write('your text')
-          end
-          File.open(File.join(root, 'wlp', 'usr', 'servers', 'defaultServer', 'jvm.options'), 'w') do |file|
-            file.write('good-opt-1')
-          end
-          File.open(File.join(root, 'jvm.options'), 'w') do |file|
-            file.write('bad-opt-1')
+        it 'should use server jvm.options file instead of the root one if both are provided.' do
+          jvm_opts = jvm_opt_test(File.join('wlp', 'usr', 'servers', 'defaultServer', 'jvm.options')) do |root, context, liberty_home|
+            Dir.mkdir File.join(root, 'WEB-INF')
+            FileUtils.ln_sf(Pathname.new(File.join(root, 'wlp', 'usr')).relative_path_from(Pathname.new(liberty_home)), liberty_home)
+            create_server_xml(File.join(root, 'wlp', 'usr', 'servers', 'defaultServer'))
+            create_jvm_options(File.join(root, 'wlp', 'usr', 'servers', 'defaultServer'), 'good-opt-1')
+            create_jvm_options(File.join(root), 'bad-opt-1')
+
+            context[:java_opts] = ''
           end
 
-          LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
-          .and_return(LIBERTY_DETAILS)
-
-          LibertyBuildpack::Util::ApplicationCache.stub(:new).and_return(application_cache)
-          application_cache.stub(:get).with(LIBERTY_SINGLE_DOWNLOAD_URI).and_yield(File.open('spec/fixtures/wlp-stub.jar'))
-
-          library_directory = File.join(root, '.lib')
-          FileUtils.mkdir_p(library_directory)
-          Liberty.new(
-          app_dir: root,
-          lib_directory: library_directory,
-          configuration: {},
-          environment: {},
-          java_opts: '',
-          license_ids: { 'IBM_LIBERTY_LICENSE' => '1234-ABCD' }
-          ).release
-
-          jvm_options_file = File.join(root, 'wlp', 'usr', 'servers', 'defaultServer', 'jvm.options')
-          expect(File.exists?(jvm_options_file)).to be_true
-          file_contents = File.read(jvm_options_file)
-          expect(file_contents).to match(/good-opt-1/)
-          expect(file_contents).to match(DISABLE_2PC_JAVA_OPT_REGEX)
-          expect(file_contents).not_to match(/bad-opt-1/)
+          expect(jvm_opts).to match(/good-opt-1/)
+          expect(jvm_opts).to match(DISABLE_2PC_JAVA_OPT_REGEX)
+          expect(jvm_opts).not_to match(/bad-opt-1/)
         end
-      end
 
-      it 'should return correct output for empty env_yml_contents' do
-        LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
-        .and_return(LIBERTY_VERSION)
-
-        yaml = Hash.new
-        YAML.stub(:load_file).and_return(yaml)
-
-        Dir.mktmpdir do |root|
-          FileUtils.cp_r('spec/fixtures/container_liberty', root)
-          contents = Liberty.new(
-            app_dir: File.join(root, 'container_liberty'),
-            java_home: 'test-java-home',
-            java_opts: '',
-            configuration: {},
-            license_ids: {}
-          ).release
-
-          expect(contents).to eq(".liberty/create_vars.rb .liberty/usr/servers/defaultServer/runtime-vars.xml && JAVA_HOME=\"$PWD/test-java-home\" .liberty/bin/server run defaultServer")
-        end
-      end
-
-      it 'should return correct output for empty env_yml_contents (older Ruby)' do
-        LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
-        .and_return(LIBERTY_VERSION)
-
-        YAML.stub(:load_file).and_return('---')
-
-        Dir.mktmpdir do |root|
-          FileUtils.cp_r('spec/fixtures/container_liberty', root)
-          contents = Liberty.new(
-            app_dir: File.join(root, 'container_liberty'),
-            java_home: 'test-java-home',
-            java_opts: '',
-            configuration: {},
-            license_ids: {}
-          ).release
-
-          expect(contents).to eq(".liberty/create_vars.rb .liberty/usr/servers/defaultServer/runtime-vars.xml && JAVA_HOME=\"$PWD/test-java-home\" .liberty/bin/server run defaultServer")
-        end
-      end
-
-      it 'should return correct output for populated env_yml_contents' do
-        LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
-        .and_return(LIBERTY_VERSION)
-
-        yaml = YAML.load('testURL: http://exampleurl.ibm.com')
-        YAML.stub(:load_file).and_return(yaml)
-
-        Dir.mktmpdir do |root|
-          FileUtils.cp_r('spec/fixtures/container_liberty', root)
-          contents = Liberty.new(
-            app_dir: File.join(root, 'container_liberty'),
-            java_home: 'test-java-home',
-            java_opts: '',
-            configuration: {},
-            license_ids: {}
-          ).release
-
-          expect(contents).to eq(".liberty/create_vars.rb .liberty/usr/servers/defaultServer/runtime-vars.xml && testURL=http://exampleurl.ibm.com JAVA_HOME=\"$PWD/test-java-home\" .liberty/bin/server run defaultServer")
-        end
-      end
+      end # end of JVM Options Context
 
       it 'should return correct execution command for the WEB-INF case' do
         LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
         .and_return(LIBERTY_VERSION)
 
-        allow_any_instance_of(Liberty).to receive(:env_yml_contents).and_return('')
         Dir.mktmpdir do |root|
           FileUtils.cp_r('spec/fixtures/container_liberty', root)
           command = Liberty.new(
             app_dir: File.join(root, 'container_liberty'),
-            java_home: 'test-java-home',
+            java_home: test_java_home,
             java_opts: '',
             configuration: {},
             license_ids: {}
           ).release
 
-          expect(command).to eq(".liberty/create_vars.rb .liberty/usr/servers/defaultServer/runtime-vars.xml && JAVA_HOME=\"$PWD/test-java-home\" .liberty/bin/server run defaultServer")
-        end
-      end
-
-      it 'should return correct execution command for the WEB-INF case with env.yml' do
-        LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
-        .and_return(LIBERTY_VERSION)
-
-        allow_any_instance_of(Liberty).to receive(:env_yml_contents).and_return('foo=http://bar.com')
-
-        Dir.mktmpdir do |root|
-          FileUtils.cp_r('spec/fixtures/container_liberty', root)
-          command = Liberty.new(
-            app_dir: File.join(root, 'container_liberty'),
-            java_home: 'test-java-home',
-            java_opts: '',
-            configuration: {},
-            license_ids: {}
-          ).release
-
-          expect(command).to eq(".liberty/create_vars.rb .liberty/usr/servers/defaultServer/runtime-vars.xml && foo=http://bar.com JAVA_HOME=\"$PWD/test-java-home\" .liberty/bin/server run defaultServer")
+          expect(command).to eq(".liberty/create_vars.rb .liberty/usr/servers/defaultServer/runtime-vars.xml && JAVA_HOME=\"$PWD/#{test_java_home}\" .liberty/bin/server run defaultServer")
         end
       end
 
@@ -1619,38 +1546,17 @@ module LibertyBuildpack::Container
         LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
         .and_return(LIBERTY_VERSION)
 
-        allow_any_instance_of(Liberty).to receive(:env_yml_contents).and_return('')
         Dir.mktmpdir do |root|
           FileUtils.cp_r('spec/fixtures/container_liberty_ear', root)
           command = Liberty.new(
             app_dir: File.join(root, 'container_liberty_ear'),
-            java_home: 'test-java-home',
+            java_home: test_java_home,
             java_opts: '',
             configuration: {},
             license_ids: {}
           ).release
 
-          expect(command).to eq(".liberty/create_vars.rb .liberty/usr/servers/defaultServer/runtime-vars.xml && JAVA_HOME=\"$PWD/test-java-home\" .liberty/bin/server run defaultServer")
-        end
-      end
-
-      it 'should return correct execution command for the META-INF case with env.yml' do
-        LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
-        .and_return(LIBERTY_VERSION)
-
-        allow_any_instance_of(Liberty).to receive(:env_yml_contents).and_return('foo=http://bar.com')
-
-        Dir.mktmpdir do |root|
-          FileUtils.cp_r('spec/fixtures/container_liberty_ear', root)
-          command = Liberty.new(
-            app_dir: File.join(root, 'container_liberty_ear'),
-            java_home: 'test-java-home',
-            java_opts: '',
-            configuration: {},
-            license_ids: {}
-          ).release
-
-          expect(command).to eq(".liberty/create_vars.rb .liberty/usr/servers/defaultServer/runtime-vars.xml && foo=http://bar.com JAVA_HOME=\"$PWD/test-java-home\" .liberty/bin/server run defaultServer")
+          expect(command).to eq(".liberty/create_vars.rb .liberty/usr/servers/defaultServer/runtime-vars.xml && JAVA_HOME=\"$PWD/#{test_java_home}\" .liberty/bin/server run defaultServer")
         end
       end
 
@@ -1658,38 +1564,17 @@ module LibertyBuildpack::Container
         LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
         .and_return(LIBERTY_VERSION)
 
-        allow_any_instance_of(Liberty).to receive(:env_yml_contents).and_return('')
         Dir.mktmpdir do |root|
           FileUtils.cp_r('spec/fixtures/container_liberty_server', root)
           command = Liberty.new(
             app_dir: File.join(root, 'container_liberty_server'),
-            java_home: 'test-java-home',
+            java_home: test_java_home,
             java_opts: '',
             configuration: {},
             license_ids: {}
           ).release
 
-          expect(command).to eq(".liberty/create_vars.rb .liberty/usr/servers/myServer/runtime-vars.xml && JAVA_HOME=\"$PWD/test-java-home\" .liberty/bin/server run myServer")
-        end
-      end
-
-      it 'should return correct execution command for the zipped-up server case with env.yml' do
-        LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
-        .and_return(LIBERTY_VERSION)
-
-        allow_any_instance_of(Liberty).to receive(:env_yml_contents).and_return('foo=http://bar.com')
-
-        Dir.mktmpdir do |root|
-          FileUtils.cp_r('spec/fixtures/container_liberty_server', root)
-          command = Liberty.new(
-            app_dir: File.join(root, 'container_liberty_server'),
-            java_home: 'test-java-home',
-            java_opts: '',
-            configuration: {},
-            license_ids: {}
-          ).release
-
-          expect(command).to eq(".liberty/create_vars.rb .liberty/usr/servers/myServer/runtime-vars.xml && foo=http://bar.com JAVA_HOME=\"$PWD/test-java-home\" .liberty/bin/server run myServer")
+          expect(command).to eq(".liberty/create_vars.rb .liberty/usr/servers/myServer/runtime-vars.xml && JAVA_HOME=\"$PWD/#{test_java_home}\" .liberty/bin/server run myServer")
         end
       end
 
@@ -1697,38 +1582,17 @@ module LibertyBuildpack::Container
         LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
         .and_return(LIBERTY_VERSION)
 
-        allow_any_instance_of(Liberty).to receive(:env_yml_contents).and_return('')
         Dir.mktmpdir do |root|
           FileUtils.cp_r('spec/fixtures/container_liberty_single_server', root)
           command = Liberty.new(
             app_dir: File.join(root, 'container_liberty_single_server'),
-            java_home: 'test-java-home',
+            java_home: test_java_home,
             java_opts: '',
             configuration: {},
             license_ids: {}
           ).release
 
-          expect(command).to eq(".liberty/create_vars.rb .liberty/usr/servers/defaultServer/runtime-vars.xml && JAVA_HOME=\"$PWD/test-java-home\" .liberty/bin/server run defaultServer")
-        end
-      end
-
-      it 'should return correct execution command for single-server case with env.yml' do
-        LibertyBuildpack::Repository::ConfiguredItem.stub(:find_item) { |&block| block.call(LIBERTY_VERSION) if block }
-        .and_return(LIBERTY_VERSION)
-
-        allow_any_instance_of(Liberty).to receive(:env_yml_contents).and_return('foo=http://bar.com')
-
-        Dir.mktmpdir do |root|
-          FileUtils.cp_r('spec/fixtures/container_liberty_single_server', root)
-          command = Liberty.new(
-            app_dir: File.join(root, 'container_liberty_single_server'),
-            java_home: 'test-java-home',
-            java_opts: '',
-            configuration: {},
-            license_ids: {}
-          ).release
-
-          expect(command).to eq(".liberty/create_vars.rb .liberty/usr/servers/defaultServer/runtime-vars.xml && foo=http://bar.com JAVA_HOME=\"$PWD/test-java-home\" .liberty/bin/server run defaultServer")
+          expect(command).to eq(".liberty/create_vars.rb .liberty/usr/servers/defaultServer/runtime-vars.xml && JAVA_HOME=\"$PWD/#{test_java_home}\" .liberty/bin/server run defaultServer")
         end
       end
 
@@ -1756,7 +1620,7 @@ module LibertyBuildpack::Container
           expect do
             Liberty.new(
             app_dir: root,
-            java_home: 'test-java-home',
+            java_home: test_java_home,
             java_opts: %w(test-opt-2 test-opt-1),
             configuration: {},
             license_ids: {}
@@ -1765,6 +1629,7 @@ module LibertyBuildpack::Container
         end
       end
     end
+
   end
 
   describe 'Liberty finds all applications' do
@@ -1788,7 +1653,7 @@ module LibertyBuildpack::Container
 
         apps = liberty_container.apps
         expect(apps).to match_array([spring_dir])
-        expect(File.directory?(spring_dir)).to be_true
+        expect(File.directory?(spring_dir)).to eq(true)
       end
     end
 
@@ -1807,7 +1672,7 @@ module LibertyBuildpack::Container
 
         apps = liberty_container.apps
         expect(apps).to match_array([spring_dir])
-        expect(File.directory?(spring_dir)).to be_true
+        expect(File.directory?(spring_dir)).to eq(true)
       end
     end
 
@@ -1826,7 +1691,7 @@ module LibertyBuildpack::Container
 
         apps = liberty_container.apps
         expect(apps).to match_array([spring1_war])
-        expect(File.directory?(spring1_war)).to be_true
+        expect(File.directory?(spring1_war)).to eq(true)
       end
     end
 
@@ -1845,7 +1710,7 @@ module LibertyBuildpack::Container
 
         apps = liberty_container.apps
         expect(apps).to match_array([spring1_ear])
-        expect(File.directory?(spring1_ear)).to be_true
+        expect(File.directory?(spring1_ear)).to eq(true)
       end
     end
 
@@ -1872,10 +1737,10 @@ module LibertyBuildpack::Container
 
         apps = liberty_container.apps
         expect(apps).to match_array([spring1_war, spring2_war, spring1_ear, spring2_ear])
-        expect(File.directory?(spring1_war)).to be_true
-        expect(File.directory?(spring2_war)).to be_true
-        expect(File.directory?(spring1_ear)).to be_true
-        expect(File.directory?(spring2_ear)).to be_true
+        expect(File.directory?(spring1_war)).to eq(true)
+        expect(File.directory?(spring2_war)).to eq(true)
+        expect(File.directory?(spring1_ear)).to eq(true)
+        expect(File.directory?(spring2_ear)).to eq(true)
       end
     end
   end

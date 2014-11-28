@@ -1,6 +1,6 @@
 # Encoding: utf-8
 # IBM WebSphere Application Server Liberty Buildpack
-# Copyright 2013 the original author or authors.
+# Copyright 2013-2014 the original author or authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 require 'fileutils'
 require 'liberty_buildpack/diagnostics/common'
+require 'liberty_buildpack/container/common_paths'
 require 'liberty_buildpack/jre'
 require 'liberty_buildpack/jre/memory/openjdk_memory_heuristic_factory'
 require 'liberty_buildpack/repository/configured_item'
@@ -29,7 +30,7 @@ module LibertyBuildpack::Jre
   class OpenJdk
 
     # Filename of killjava script used to kill the JVM on OOM.
-    KILLJAVA_FILE_NAME = 'killjava'
+    KILLJAVA_FILE_NAME = 'killjava.sh'
 
     # Creates an instance, passing in an arbitrary collection of options.
     #
@@ -43,6 +44,7 @@ module LibertyBuildpack::Jre
       @app_dir = context[:app_dir]
       @java_opts = context[:java_opts]
       @configuration = context[:configuration]
+      @common_paths = context[:common_paths] || LibertyBuildpack::Container::CommonPaths.new
       @jvm_type = context[:jvm_type]
       context[:java_home].concat JAVA_HOME unless context[:java_home].include? JAVA_HOME
     end
@@ -77,7 +79,7 @@ module LibertyBuildpack::Jre
     # @return [void]
     def release
       @version = OpenJdk.find_openjdk(@configuration)[0]
-      @java_opts << "-XX:OnOutOfMemoryError=./#{LibertyBuildpack::Diagnostics::DIAGNOSTICS_DIRECTORY}/#{KILLJAVA_FILE_NAME}"
+      @java_opts << "-XX:OnOutOfMemoryError=#{@common_paths.diagnostics_directory}/#{KILLJAVA_FILE_NAME}"
       @java_opts.concat memory(@configuration)
     end
 
@@ -95,8 +97,8 @@ module LibertyBuildpack::Jre
       expand_start_time = Time.now
       print "       Expanding OpenJdk to #{JAVA_HOME} "
 
-      system "rm -rf #{java_home}"
-      system "mkdir -p #{java_home}"
+      FileUtils.rm_rf(java_home)
+      FileUtils.mkdir_p(java_home)
 
       system "tar xzf #{file.path} -C #{java_home} --strip 1 2>&1"
       puts "(#{(Time.now - expand_start_time).duration})"
@@ -124,10 +126,6 @@ module LibertyBuildpack::Jre
       sizes = @configuration[KEY_MEMORY_SIZES] || {}
       heuristics = @configuration[KEY_MEMORY_HEURISTICS] || {}
       OpenJDKMemoryHeuristicFactory.create_memory_heuristic(sizes, heuristics, @version).resolve
-    end
-
-    def pre_8
-      @version < LibertyBuildpack::Util::TokenizedVersion.new('1.8.0')
     end
 
     def copy_killjava_script

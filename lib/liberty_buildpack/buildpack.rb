@@ -1,6 +1,6 @@
 # Encoding: utf-8
 # IBM WebSphere Application Server Liberty Buildpack
-# Copyright 2013 the original author or authors.
+# Copyright 2013-2014 the original author or authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 require 'fileutils'
 require 'liberty_buildpack'
+require 'liberty_buildpack/buildpack_version'
 require 'liberty_buildpack/container/common_paths'
 require 'liberty_buildpack/util/constantize'
 require 'liberty_buildpack/diagnostics/logger_factory'
@@ -60,7 +61,7 @@ module LibertyBuildpack
       framework_detections = Buildpack.component_detections @frameworks
       container_detections = Buildpack.component_detections @containers
       raise "Application can not be run by more than one container: #{container_detections.join(', ')}" if container_detections.size > 1
-      tags = container_detections.empty? ? [] : [@jre_version].concat(framework_detections).concat(container_detections).flatten.compact
+      tags = container_detections.empty? ? [] : container_detections.concat([@jre_version]).concat(framework_detections).flatten.compact
       tags
     end
 
@@ -68,19 +69,17 @@ module LibertyBuildpack
     #
     # @return [void]
     def compile
+      # Report buildpack build version
+      puts BUILDPACK_MESSAGE % @buildpack_version
       @logger.debug { 'Liberty Buildpack starting compile' }
-      puts 'Liberty buildpack is starting to compile the droplet'
+
       the_container = container # diagnose detect failure early
       FileUtils.mkdir_p @lib_directory
-
-      # Report buildpack build version if it's available
-      version_file = Pathname.new(File.expand_path(BUILDPACK_VERSION, __FILE__))
-      version_file.each_line { |line| print line } if version_file.file?
 
       @jre.compile
       frameworks.each { |framework| framework.compile }
       the_container.compile
-      puts 'Liberty buildpack has completed the compile step'
+      puts '-----> Liberty buildpack is done creating the droplet'
       @logger.debug { 'Liberty Buildpack compile complete' }
     end
 
@@ -114,7 +113,7 @@ module LibertyBuildpack
     COMPONENTS_CONFIG = '../../config/components.yml'.freeze
 
     LICENSE_CONFIG = '../../config/licenses.yml'.freeze
-    BUILDPACK_VERSION = '../../../version.txt'.freeze
+    BUILDPACK_MESSAGE = '-----> Liberty Buildpack Version: %s'.freeze
 
     JRE_TYPE = 'jres'.freeze
     FRAMEWORK_TYPE = 'frameworks'.freeze
@@ -125,6 +124,7 @@ module LibertyBuildpack
     # Instances should only be constructed by this class.
     def initialize(app_dir)
       @logger = LibertyBuildpack::Diagnostics::LoggerFactory.get_logger
+      @buildpack_version = BuildpackVersion.new
       Buildpack.log_debug_data @logger
       Buildpack.require_component_files
       components = Buildpack.components @logger

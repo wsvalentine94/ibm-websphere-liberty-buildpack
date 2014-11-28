@@ -1,5 +1,5 @@
 # IBM WebSphere Application Server Liberty Buildpack
-# Copyright (c) 2013 the original author or authors.
+# Copyright 2013-2014 the original author or authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,3 +17,11 @@
 ---
 repository_root: "https://download.run.pivotal.io/openjdk/lucid/x86_64"
 version: 1.7.0_+
+memory_sizes:
+  permgen: 64m..
+memory_heuristics:
+  heap: 75
+  permgen: 10
+  stack: 5
+  native: 10
+  

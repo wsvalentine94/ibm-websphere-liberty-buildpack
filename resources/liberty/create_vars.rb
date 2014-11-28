@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # Encoding: utf-8
 # IBM WebSphere Application Server Liberty Buildpack
-# Copyright 2013 the original author or authors.
+# Copyright 2013-2014 the original author or authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,21 +21,24 @@ require 'rexml/document'
 
 def add_runtime_variable(element, name, value)
   unless name.nil? || value.nil?
-    new_element = REXML::Element.new('variable', element)
-    new_element.add_attribute('name', name.downcase)
-      new_element.add_attribute('value', value)
+    variables = element.root.elements.to_a("//variable[@name='#{name.downcase}']")
+    value = value.is_a?(Array) ? value.join(', ') : value
+    if variables.empty?
+      variable = REXML::Element.new('variable', element)
+      variable.add_attribute('name', name.downcase)
+      variable.add_attribute('value', value)
+    else
+      variables.last.add_attribute('value', value)
+    end
   end
 end
 
 def add_variable(element, name)
-    add_runtime_variable(element, name, ENV[name].to_s) unless ENV[name].nil?
+  add_runtime_variable(element, name, ENV[name].to_s) unless ENV[name].nil?
 end
 
-def add_vcap_app_variable(element, name)
-  unless ENV['VCAP_APPLICATION'].nil?
-    json_app = JSON.parse(ENV['VCAP_APPLICATION'])
-    add_runtime_variable(element, name, json_app[name])
-  end
+def add_vcap_app_variable(element, json_app, name)
+  add_runtime_variable(element, name, json_app[name]) unless json_app[name].nil?
 end
 
 def log_directory
@@ -56,11 +59,16 @@ add_variable(document.root, 'HOME')
 add_variable(document.root, 'VCAP_CONSOLE_PORT')
 add_variable(document.root, 'VCAP_APP_PORT')
 add_variable(document.root, 'VCAP_CONSOLE_IP')
-add_vcap_app_variable(document.root, 'application_name')
-add_vcap_app_variable(document.root, 'application_version')
-add_vcap_app_variable(document.root, 'host')
-add_vcap_app_variable(document.root, 'application_uris')
-add_vcap_app_variable(document.root, 'start')
+
+unless ENV['VCAP_APPLICATION'].nil?
+  json_app = JSON.parse(ENV['VCAP_APPLICATION'])
+  add_vcap_app_variable(document.root, json_app, 'application_name')
+  add_vcap_app_variable(document.root, json_app, 'application_version')
+  add_vcap_app_variable(document.root, json_app, 'host')
+  add_vcap_app_variable(document.root, json_app, 'application_uris')
+  add_vcap_app_variable(document.root, json_app, 'start')
+end
+
 add_runtime_variable(document.root, 'application.log.dir', log_directory)
 
 formatter = REXML::Formatters::Pretty.new(2)
